@@ -576,10 +576,18 @@ async function startServer() {
         return res.redirect(`${appUrl}/auth/login?error=oauth_token_failed`);
       }
 
-      const tokenData = await tokenResponse.json() as { id_token: string };
+      const tokenData = await tokenResponse.json() as {
+        access_token: string;
+        refresh_token?: string;
+        expires_in?: number;
+        scope?: string;
+        token_type?: string;
+        id_token?: string;
+      };
+
       const userInfoResponse = await fetch(
         "https://www.googleapis.com/oauth2/v2/userinfo",
-        { headers: { Authorization: `Bearer ${tokenData.id_token}` } }
+        { headers: { Authorization: `Bearer ${tokenData.access_token}` } }
       );
 
       if (!userInfoResponse.ok) {
@@ -613,12 +621,26 @@ async function startServer() {
             providerAccountId: googleUser.id,
           },
         },
-        update: {},
+        update: {
+          access_token: tokenData.access_token,
+          ...(tokenData.refresh_token ? { refresh_token: tokenData.refresh_token } : {}),
+          ...(tokenData.expires_in ? { expires_at: Math.floor(Date.now() / 1000) + tokenData.expires_in } : {}),
+          ...(tokenData.scope ? { scope: tokenData.scope } : {}),
+          ...(tokenData.token_type ? { token_type: tokenData.token_type } : {}),
+          ...(tokenData.id_token ? { id_token: tokenData.id_token } : {}),
+        },
         create: {
           userId: user.id,
           provider: "google",
           providerAccountId: googleUser.id,
-          access_token: tokenData.id_token,
+          access_token: tokenData.access_token,
+          refresh_token: tokenData.refresh_token ?? null,
+          expires_at: tokenData.expires_in
+            ? Math.floor(Date.now() / 1000) + tokenData.expires_in
+            : null,
+          token_type: tokenData.token_type ?? null,
+          scope: tokenData.scope ?? null,
+          id_token: tokenData.id_token ?? null,
         },
       });
 
