@@ -603,7 +603,16 @@ async function startServer() {
 
       let user = await prisma.user.findUnique({ where: { email: googleUser.email } });
 
-      if (!user) {
+      if (user) {
+        user = await prisma.user.update({
+          where: { id: user.id },
+          data: {
+            name: googleUser.name || undefined,
+            image: googleUser.picture || undefined,
+            emailVerified: user.emailVerified ?? new Date(),
+          },
+        });
+      } else {
         user = await prisma.user.create({
           data: {
             email: googleUser.email,
