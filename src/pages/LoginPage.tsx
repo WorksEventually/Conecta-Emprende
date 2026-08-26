@@ -14,6 +14,15 @@ export default function LoginPage() {
   const [searchParams] = useSearchParams();
   const oauthError = searchParams.get("error");
 
+  const oauthErrorMessages: Record<string, string> = {
+    oauth_cancelled: "Cancelaste el inicio de sesión con Google. Podés intentarlo de nuevo cuando quieras.",
+    oauth_state_invalid: "La sesión de acceso con Google expiró o no es válida. Volvé a intentarlo.",
+    oauth_token_failed: "No pudimos validar tu acceso con Google. Verificá la configuración e intentá de nuevo.",
+    oauth_userinfo_failed: "No pudimos obtener tu información de Google. Intentá de nuevo en unos minutos.",
+    oauth_server_error: "Tuvimos un problema interno al iniciar sesión con Google. Intentá de nuevo.",
+    oauth_failed: "No se pudo iniciar sesión con Google. Intentá de nuevo.",
+  };
+
   const navigate = useNavigate();
   const { login, isLoading, error, clearError } = useAuthStore();
 
@@ -44,7 +53,7 @@ export default function LoginPage() {
         {oauthError && (
           <div className="auth-error-banner">
             <AlertCircle size={16} />
-            No se pudo iniciar sesión con Google. Intentá de nuevo.
+            {oauthErrorMessages[oauthError] ?? "No se pudo iniciar sesión con Google. Intentá de nuevo."}
           </div>
         )}
 

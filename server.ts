@@ -41,6 +41,8 @@ import {
   getRefreshTokenFromRequest,
   getRefreshTokenExpiryDate,
   generateSecureToken,
+  setOAuthStateCookie,
+  COOKIES,
   type TokenPayload,
 } from "./src/lib/auth";
 import { prisma } from "./src/lib/db";
@@ -521,26 +523,31 @@ async function startServer() {
   // GET /api/auth/google — initiate OAuth
   app.get("/api/auth/google", (req, res) => {
     const clientId = process.env.GOOGLE_CLIENT_ID;
+    const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
     const appUrl = process.env.APP_URL || "http://localhost:3000";
 
-    if (!clientId) {
+    if (!clientId || !clientSecret) {
       return res.status(503).json({
         success: false,
-        error: "OAuth con Google no está configurado",
+        error:
+          "El acceso con Google no está disponible por ahora. El administrador debe configurar las credenciales de Google (GOOGLE_CLIENT_ID y GOOGLE_CLIENT_SECRET).",
       });
     }
 
     const redirectUri = `${appUrl}/api/auth/google/callback`;
-    const scope = encodeURIComponent("openid email profile");
+    const state = generateSecureToken();
+
+    setOAuthStateCookie(res, state);
 
     const authUrl = [
       "https://accounts.google.com/o/oauth2/v2/auth",
-      `?client_id=${clientId}`,
+      `?client_id=${encodeURIComponent(clientId)}`,
       `&redirect_uri=${encodeURIComponent(redirectUri)}`,
       "&response_type=code",
       "&scope=openid email profile",
       "&access_type=offline",
       "&prompt=consent",
+      `&state=${encodeURIComponent(state)}`,
     ].join("");
 
     res.redirect(authUrl);
@@ -548,11 +555,25 @@ async function startServer() {
 
   // GET /api/auth/google/callback — handle OAuth
   app.get("/api/auth/google/callback", async (req, res) => {
-    const { code, error } = req.query;
+    const { code, error, state } = req.query;
     const appUrl = process.env.APP_URL || "http://localhost:3000";
 
-    if (error || !code) {
-      return res.redirect(`${appUrl}/auth/login?error=oauth_failed`);
+    const redirectToLogin = (errorCode: string) =>
+      res.redirect(`${appUrl}/auth/login?error=${errorCode}`);
+
+    if (error) {
+      return redirectToLogin("oauth_cancelled");
+    }
+
+    if (!code) {
+      return redirectToLogin("oauth_failed");
+    }
+
+    const expectedState = req.cookies?.[COOKIES.OAUTH_STATE];
+    res.clearCookie(COOKIES.OAUTH_STATE, { path: "/" });
+
+    if (!expectedState || typeof state !== "string" || state !== expectedState) {
+      return redirectToLogin("oauth_state_invalid");
     }
 
     try {
@@ -573,7 +594,7 @@ async function startServer() {
       });
 
       if (!tokenResponse.ok) {
-        return res.redirect(`${appUrl}/auth/login?error=oauth_token_failed`);
+        return redirectToLogin("oauth_token_failed");
       }
 
       const tokenData = await tokenResponse.json() as {
@@ -591,7 +612,7 @@ async function startServer() {
       );
 
       if (!userInfoResponse.ok) {
-        return res.redirect(`${appUrl}/auth/login?error=oauth_userinfo_failed`);
+        return redirectToLogin("oauth_userinfo_failed");
       }
 
       const googleUser = await userInfoResponse.json() as {
@@ -678,8 +699,6 @@ async function startServer() {
       res.redirect(`${appUrl}/auth/login?error=oauth_server_error`);
     }
   });
-
-  // GET /api/auth/google/callback (alternative: query param error) handled above
 
   // === API ROUTES (Mounted FIRST) ===
   app.get("/api/health", (req, res) => {
