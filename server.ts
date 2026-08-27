@@ -47,6 +47,8 @@ import {
   type TokenPayload,
 } from "./src/lib/auth";
 import { prisma } from "./src/lib/db";
+import cron from "node-cron";
+import { resolveExpiredQuotes } from "./src/lib/cron/resolve-expired-quotes";
 import {
   searchProviders,
   getFullProviderByIdOrSlug,
@@ -1395,6 +1397,15 @@ async function startServer() {
     }
   });
 
+  app.post("/api/admin/resolve-expired-quotes", authenticate, requireSuperAdmin, async (req, res) => {
+    try {
+      const result = await resolveExpiredQuotes();
+      res.json({ success: true, ...result });
+    } catch (error: any) {
+      res.status(500).json({ success: false, error: error.message });
+    }
+  });
+
   // POST Generate AI Enhanced Bio
   app.post("/api/providers/enhance-bio", async (req, res) => {
     try {
@@ -2019,6 +2030,14 @@ async function startServer() {
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`\n🚀 Conecta Emprende AI Server running on http://0.0.0.0:${PORT}`);
   });
+
+  if (process.env.NODE_ENV !== "test") {
+    cron.schedule("*/10 * * * *", async () => {
+      try { await resolveExpiredQuotes(); }
+      catch (error) { console.error("[Cron] Error resolving expired quotes:", error); }
+    });
+    console.log("✓ Cron job: resolve expired quotes every 10 minutes");
+  }
 }
 
 startServer();
