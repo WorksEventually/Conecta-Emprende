@@ -24,6 +24,7 @@ import {
   providerSuspendSchema,
   quoteMessageSchema,
   quoteUpdateSchema,
+  quoteCompletionSchema,
   reviewCreateSchema,
   riskReportEscalateSchema,
   riskReportQuerySchema,
@@ -1054,6 +1055,52 @@ async function startServer() {
     } catch (error) {
       console.error("Update quote error:", error);
       res.status(500).json({ success: false, error: "Error al actualizar cotización" });
+    }
+  });
+
+  app.patch("/api/quotes/:id/complete", authenticate, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { userId } = req.user;
+      const parsed = quoteCompletionSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ success: false, error: "Datos inválidos", details: parsed.error.issues });
+      }
+      const { role } = parsed.data;
+
+      const { thread, role: participantRole } = await getThreadParticipantRole(id, userId);
+      if (!thread) return res.status(404).json({ success: false, error: "Solicitud no encontrada" });
+      if (!participantRole) return res.status(403).json({ success: false, error: "No participás en esta solicitud" });
+
+      const mappedRole = participantRole === "client" ? "REQUESTER" : "PROVIDER";
+      if (mappedRole !== role) return res.status(403).json({ success: false, error: `Tu rol es ${mappedRole}, no ${role}` });
+      if (thread.workflow_phase !== "OPEN") return res.status(400).json({ success: false, error: "Esta solicitud ya no está abierta para confirmación de cierre" });
+
+      const now = new Date();
+      const deadline = new Date(now.getTime() + 72 * 60 * 60 * 1000);
+      const updateData: any = { workflow_phase: "COMPLETION_PENDING", completionDeadline: deadline };
+
+      if (role === "REQUESTER") updateData.confirmedByRequesterAt = now;
+      else updateData.confirmedByProviderAt = now;
+
+      const otherConfirmed =
+        (role === "REQUESTER" && thread.confirmedByProviderAt) ||
+        (role === "PROVIDER" && thread.confirmedByRequesterAt);
+
+      if (otherConfirmed) {
+        updateData.workflow_phase = "CLOSED";
+        updateData.closure_outcome = "BILATERAL";
+        updateData.completedAt = now;
+      }
+
+      await prisma.quoteThread.update({ where: { id }, data: updateData });
+      const message = otherConfirmed
+        ? "¡Trabajo confirmado! Ambas partes confirmaron el cierre."
+        : "Confirmación registrada. Se activó ventana de 72h para que la otra parte confirme.";
+      res.json({ success: true, message });
+    } catch (error) {
+      console.error("Complete quote error:", error);
+      res.status(500).json({ success: false, error: "Error al confirmar cierre" });
     }
   });
 

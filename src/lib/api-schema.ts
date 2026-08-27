@@ -74,6 +74,10 @@ export const quoteUpdateSchema = z.object({
   confirmedByProviderAt: z.union([z.boolean(), z.string().datetime()]).optional(),
 });
 
+export const quoteCompletionSchema = z.object({
+  role: z.enum(["REQUESTER", "PROVIDER"]),
+});
+
 export const riskReportQuerySchema = z.object({
   status: z.enum(["OPEN", "UNDER_REVIEW", "DISMISSED", "ESCALATED", "ACTION_TAKEN"]).optional(),
 });
