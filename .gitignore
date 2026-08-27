@@ -6,3 +6,8 @@ coverage/
 *.log
 .env*
 !.env.example
+pitch-video/
+
+# Herramientas locales del agente (opencode)
+.agents/
+skills-lock.json
