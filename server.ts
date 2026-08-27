@@ -872,7 +872,7 @@ async function startServer() {
   });
 
   // POST Generate AI Quote Draft (Left intact as it hits external API or mocked local)
-  app.post("/api/quotes/draft", async (req, res) => {
+  app.post("/api/quotes/draft", authenticate, async (req, res) => {
     try {
       const parsed = quoteDraftRequestSchema.safeParse(req.body);
       if (!parsed.success) {
