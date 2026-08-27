@@ -1076,7 +1076,7 @@ async function startServer() {
 
       const mappedRole = participantRole === "client" ? "REQUESTER" : "PROVIDER";
       if (mappedRole !== role) return res.status(403).json({ success: false, error: `Tu rol es ${mappedRole}, no ${role}` });
-      if (thread.workflow_phase !== "OPEN") return res.status(400).json({ success: false, error: "Esta solicitud ya no está abierta para confirmación de cierre" });
+      if (thread.workflow_phase === "CLOSED") return res.status(400).json({ success: false, error: "Esta solicitud ya está cerrada" });
 
       const now = new Date();
       const deadline = new Date(now.getTime() + 72 * 60 * 60 * 1000);
