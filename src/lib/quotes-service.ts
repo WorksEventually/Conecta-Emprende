@@ -52,7 +52,7 @@ function mapThread(t: any): QuoteThreadWithMessages {
     clientName: t.clientName || t.sender?.name || "Cliente",
     clientAvatar: t.clientAvatar || (t.sender?.name?.split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2) || "CL"),
     dateLabel: t.dateLabel || computeDateLabel(t.createdAt),
-    status: getLegacyDisplayStatus(t.workflow_phase, t.closure_outcome),
+    status: t.status || getLegacyDisplayStatus(t.workflow_phase, t.closure_outcome),
     workflow_phase: t.workflow_phase,
     closure_outcome: t.closure_outcome,
     moderation_state: t.moderation_state,

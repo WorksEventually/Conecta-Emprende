@@ -35,6 +35,9 @@ interface Thread {
   clientName: string;
   clientAvatar: string;
   status: string;
+  workflow_phase?: string;
+  closure_outcome?: string | null;
+  completionDeadline?: string | null;
   date: string;
   messages: ChatMessage[];
   unread?: number;
@@ -151,6 +154,20 @@ export default function QuotesPage() {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: 'CLOSED' }),
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['quotes'] });
+    },
+  });
+
+  const completeMutation = useMutation({
+    mutationFn: async (threadId: string) => {
+      const res = await fetch(`/api/quotes/${threadId}/complete`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role: 'PROVIDER' }),
       });
       return res.json();
     },
@@ -439,13 +456,13 @@ export default function QuotesPage() {
                 </div>
               </div>
               <div className="flex items-center gap-2 shrink-0">
-                {activeThread.status === 'OPEN' && (
+                {activeThread.workflow_phase === 'OPEN' && (
                   <button
-                    onClick={() => closeMutation.mutate(activeThread.id)}
-                    disabled={closeMutation.isPending}
-                    className="text-sm font-bold text-slate-700 hover:text-slate-900 px-4 py-2 border border-slate-200 rounded-full hover:bg-slate-50 transition-colors hidden sm:block disabled:opacity-50"
+                    onClick={() => completeMutation.mutate(activeThread.id)}
+                    disabled={completeMutation.isPending}
+                    className="text-sm font-bold text-white px-4 py-2 rounded-full bg-[var(--brand)] hover:opacity-90 transition-colors disabled:opacity-50"
                   >
-                    {closeMutation.isPending ? "Cerrando..." : "Marcar como completado"}
+                    {completeMutation.isPending ? "Confirmando..." : "Confirmar trabajo completado"}
                   </button>
                 )}
                 <button className="w-10 h-10 rounded-full flex items-center justify-center text-slate-400 hover:bg-slate-100 transition-colors">
@@ -717,6 +734,30 @@ export default function QuotesPage() {
               </div>
             )}
 
+            {activeThread.workflow_phase === 'COMPLETION_PENDING' && activeThread.completionDeadline && (
+              <div className="px-4 md:px-6 pt-4 pb-2 bg-white">
+                <div className="flex items-start gap-2 text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+                  <Clock className="w-4 h-4 mt-0.5 shrink-0" />
+                  <div>
+                    <strong>Esperando confirmación del cliente</strong>
+                    <p className="mt-0.5">Plazo límite: {new Date(activeThread.completionDeadline).toLocaleString("es-NI", { dateStyle: "medium", timeStyle: "short" })}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {activeThread.workflow_phase === 'CLOSED' && activeThread.closure_outcome && (
+              <div className="px-4 md:px-6 pt-4 pb-2 bg-white">
+                <div className="flex items-start gap-2 text-sm text-slate-700 bg-slate-100 border border-slate-200 rounded-xl px-4 py-3">
+                  <CheckCircle className="w-4 h-4 mt-0.5 shrink-0" />
+                  <div>
+                    <strong>Trabajo cerrado</strong>
+                    <p className="mt-0.5">{getClosureOutcomeMessage(activeThread.closure_outcome)}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Chat Input */}
             <div className={`p-4 md:p-6 bg-white border-t border-slate-200 shrink-0 ${replyingTo ? 'pt-0' : ''}`}>
               <div className="flex items-end gap-3 max-w-4xl mx-auto">
@@ -731,9 +772,9 @@ export default function QuotesPage() {
                     ref={textareaRef}
                     value={reply}
                     onChange={(e) => setReply(e.target.value)}
-                    disabled={activeThread.status === 'CLOSED'}
+                    disabled={activeThread.workflow_phase === 'CLOSED'}
                     placeholder={
-                      activeThread.status === 'CLOSED'
+                      activeThread.workflow_phase === 'CLOSED'
                         ? "Esta cotización ha sido cerrada."
                         : "Escribe tu respuesta comercial..."
                     }
@@ -785,4 +826,16 @@ export default function QuotesPage() {
       </div>
     </div>
   );
+}
+
+function getClosureOutcomeMessage(outcome: string): string {
+  const messages: Record<string, string> = {
+    BILATERAL: "Ambas partes confirmaron el trabajo completado.",
+    REQUESTER_CONFIRMED_PROVIDER_NO_RESPONSE: "El cliente confirmó pero el proveedor no respondió dentro de 72 horas.",
+    PROVIDER_CLAIMED_REQUESTER_NO_RESPONSE: "El proveedor confirmó pero el cliente no respondió dentro de 72 horas.",
+    CANCELLED_BY_REQUESTER: "Cancelado por el cliente.",
+    CANCELLED_BY_PROVIDER: "Cancelado por el proveedor.",
+    MODERATION_CLOSURE: "Cerrado por moderación.",
+  };
+  return messages[outcome] || "Cerrado.";
 }

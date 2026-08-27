@@ -128,11 +128,12 @@ export default function ChatPage() {
   const handleConfirm = async (as: "requester" | "provider") => {
     if (!requestId) return;
     try {
-      if (as === "requester") {
-        await updateThread(requestId, { confirmedByRequesterAt: new Date().toISOString() });
-      } else {
-        await updateThread(requestId, { confirmedByProviderAt: new Date().toISOString(), status: "COMPLETED" });
-      }
+      const role = as === "requester" ? "REQUESTER" : "PROVIDER";
+      await fetch(`/api/quotes/${requestId}/complete`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ role }),
+      });
       await getThread(requestId);
     } catch (e) {
       console.error("Confirm error:", e);
@@ -272,6 +273,26 @@ export default function ChatPage() {
           </div>
         </section>
 
+        {thread.workflow_phase === "COMPLETION_PENDING" && thread.completionDeadline && (
+          <section className="completion-banner warning">
+            <Info size={20} />
+            <div>
+              <strong>Esperando confirmación de la otra parte</strong>
+              <p>Plazo límite: {new Date(thread.completionDeadline).toLocaleString("es-NI", { dateStyle: "medium", timeStyle: "short" })}</p>
+            </div>
+          </section>
+        )}
+
+        {thread.workflow_phase === "CLOSED" && thread.closure_outcome && (
+          <section className="completion-banner info">
+            <CheckCheck size={20} />
+            <div>
+              <strong>Trabajo cerrado</strong>
+              <p>{getClosureOutcomeMessage(thread.closure_outcome)}</p>
+            </div>
+          </section>
+        )}
+
         <section className="message-stream" aria-live="polite">
           {thread.messages.map((message, idx) => (
             <article className="message-block-wrap" key={message.id || idx}>
@@ -285,7 +306,7 @@ export default function ChatPage() {
           <div ref={bottomRef} />
         </section>
 
-        {thread.status !== "COMPLETED" && !thread.status.startsWith("CLOSED") && (
+        {thread.workflow_phase === "OPEN" && (
           <footer className="chat-composer">
             <div className="quick-replies">
               {quickReplies[actor].map(text => (
@@ -389,7 +410,7 @@ export default function ChatPage() {
               {thread.confirmedByProviderAt ? <Check /> : <Circle />} Proveedor
             </span>
           </div>
-          {thread.status !== "COMPLETED" && (
+          {thread.workflow_phase === "OPEN" && (
             <>
               <button
                 className="button secondary full"
@@ -504,6 +525,18 @@ function MessageBlock({
       <p>{text}</p>
     </article>
   );
+}
+
+function getClosureOutcomeMessage(outcome: string): string {
+  const messages: Record<string, string> = {
+    BILATERAL: "Ambas partes confirmaron el trabajo completado.",
+    REQUESTER_CONFIRMED_PROVIDER_NO_RESPONSE: "El cliente confirmó pero el proveedor no respondió dentro de 72 horas.",
+    PROVIDER_CLAIMED_REQUESTER_NO_RESPONSE: "El proveedor confirmó pero el cliente no respondió dentro de 72 horas.",
+    CANCELLED_BY_REQUESTER: "Cancelado por el cliente.",
+    CANCELLED_BY_PROVIDER: "Cancelado por el proveedor.",
+    MODERATION_CLOSURE: "Cerrado por moderación.",
+  };
+  return messages[outcome] || "Cerrado.";
 }
 
 function RequestSummaryUI({
