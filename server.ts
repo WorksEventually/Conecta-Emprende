@@ -1095,6 +1095,8 @@ async function startServer() {
         updateData.completedAt = now;
       }
 
+      updateData.status = otherConfirmed ? "COMPLETED" : "QUOTE_ACCEPTED";
+
       await prisma.quoteThread.update({ where: { id }, data: updateData });
       const message = otherConfirmed
         ? "¡Trabajo confirmado! Ambas partes confirmaron el cierre."

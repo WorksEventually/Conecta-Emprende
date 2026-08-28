@@ -31,9 +31,24 @@ export async function resolveExpiredQuotes() {
       closure_outcome = ClosureOutcome.CANCELLED_BY_REQUESTER;
     }
 
+    let legacyStatus: string;
+    switch (closure_outcome) {
+      case ClosureOutcome.BILATERAL:
+        legacyStatus = "COMPLETED";
+        break;
+      case ClosureOutcome.REQUESTER_CONFIRMED_PROVIDER_NO_RESPONSE:
+        legacyStatus = "CLOSED_PROVIDER";
+        break;
+      case ClosureOutcome.PROVIDER_CLAIMED_REQUESTER_NO_RESPONSE:
+        legacyStatus = "CLOSED_REQUESTER";
+        break;
+      default:
+        legacyStatus = "CLOSED";
+    }
+
     await prisma.quoteThread.update({
       where: { id: thread.id },
-      data: { workflow_phase: WorkflowPhase.CLOSED, closure_outcome, completedAt: now },
+      data: { workflow_phase: WorkflowPhase.CLOSED, closure_outcome, completedAt: now, status: legacyStatus },
     });
     console.log(`[Cron] Closed thread ${thread.id} with outcome ${closure_outcome}`);
     resolved++;

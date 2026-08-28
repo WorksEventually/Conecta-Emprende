@@ -306,7 +306,7 @@ export default function ChatPage() {
           <div ref={bottomRef} />
         </section>
 
-        {thread.workflow_phase === "OPEN" && (
+        {(thread.workflow_phase === "OPEN" || thread.workflow_phase === "COMPLETION_PENDING") && (
           <footer className="chat-composer">
             <div className="quick-replies">
               {quickReplies[actor].map(text => (
@@ -394,6 +394,21 @@ export default function ChatPage() {
           {thread.status === "QUOTE_ACCEPTED" && (
             <p>El acuerdo está aceptado. Confirmen cuando el trabajo termine.</p>
           )}
+          {thread.workflow_phase === "COMPLETION_PENDING" && (
+            <p>
+              Confirmación pendiente. La otra parte tiene hasta{" "}
+              {thread.completionDeadline
+                ? new Date(thread.completionDeadline).toLocaleDateString("es-NI", {
+                    day: "numeric",
+                    month: "long",
+                    year: "numeric",
+                    hour: "2-digit",
+                    minute: "2-digit"
+                  })
+                : "72 horas"}{" "}
+              para confirmar.
+            </p>
+          )}
           {thread.status === "COMPLETED" && (
             <p className="success-note">
               <BadgeCheck /> Reseña verificada desbloqueada.
@@ -410,7 +425,7 @@ export default function ChatPage() {
               {thread.confirmedByProviderAt ? <Check /> : <Circle />} Proveedor
             </span>
           </div>
-          {thread.workflow_phase === "OPEN" && (
+          {(thread.workflow_phase === "OPEN" || thread.workflow_phase === "COMPLETION_PENDING") && (
             <>
               <button
                 className="button secondary full"

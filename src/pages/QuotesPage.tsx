@@ -456,7 +456,7 @@ export default function QuotesPage() {
                 </div>
               </div>
               <div className="flex items-center gap-2 shrink-0">
-                {activeThread.workflow_phase === 'OPEN' && (
+                {(activeThread.workflow_phase === 'OPEN' || activeThread.workflow_phase === 'COMPLETION_PENDING') && (
                   <button
                     onClick={() => completeMutation.mutate(activeThread.id)}
                     disabled={completeMutation.isPending}
