@@ -18,6 +18,25 @@ npm run lint
 npm run build
 ```
 
+## Configurar OAuth Google
+
+El inicio de sesión con Google requiere credenciales propias:
+
+1. Crear un proyecto en [Google Cloud Console](https://console.cloud.google.com).
+2. Ir a **APIs y servicios → Pantalla de consentimiento de OAuth**, tipo **Externo**, y completar nombre de la app y correos de contacto.
+3. En **Credenciales → Crear credencial → ID de cliente de OAuth**, elegir tipo **Aplicación web**.
+4. En **URIs de redirección autorizados** agregar (debe coincidir EXACTO con `${APP_URL}/api/auth/google/callback`):
+   ```
+   http://localhost:3000/api/auth/google/callback
+   ```
+5. Copiar el Client ID y Client Secret en `.env`:
+   ```env
+   GOOGLE_CLIENT_ID="..."
+   GOOGLE_CLIENT_SECRET="..."
+   ```
+
+Sin estas variables, `GET /api/auth/google` responde 503 y el botón "Continuar con Google" muestra el error correspondiente al usuario.
+
 ## Cuentas seed para pruebas manuales
 
 Todas usan la contraseña `Conecta123!`.
