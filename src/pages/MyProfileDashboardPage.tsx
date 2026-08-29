@@ -5,6 +5,7 @@ import {
   Check,
   Circle,
   ExternalLink,
+  Info,
   MessageCircle,
   Package,
   Plus,
@@ -16,12 +17,12 @@ import {
 import { useAuthStore, type AuthUser } from "../stores/auth-store";
 import { useProvidersStore } from "../stores/providers-store";
 import { useQuotesStore, type QuoteThread } from "../stores/quotes-store";
+import { TrustScoreBadge } from "../components/provider/TrustScoreBadge";
 import {
   EmptyState,
   PageHeader,
   RequestStatusBadge,
   SkeletonRows,
-  TrustBadge,
   UnavailableForMvpCard,
   VerificationBadge,
 } from "../components/mvp/Ui";
@@ -262,7 +263,12 @@ export default function MyProfileDashboardPage() {
               <h2>{provider.displayName}</h2>
               <p>{provider.aboutDescription || provider.shortDescription}</p>
               <div className="badges">
-                <TrustBadge score={trustScore} />
+                <TrustScoreBadge
+                  trustScore={trustScore ? trustScore : null}
+                  bilateralCompletions={provider.metrics?.bilateralCompletions ?? 0}
+                  emailVerified={!!user?.emailVerified}
+                  phoneVerified={provider.verified}
+                />
                 <VerificationBadge level={provider.verificationLevel} />
                 <span className="badge">
                   <ShieldCheck /> {completeness >= 80 ? "Perfil comercial sólido" : "Perfil en construcción"}
@@ -270,6 +276,22 @@ export default function MyProfileDashboardPage() {
               </div>
             </div>
           </section>
+
+          {(() => {
+            const bilateralCompletions = provider.metrics?.bilateralCompletions ?? 0;
+            if (bilateralCompletions < 3) {
+              return (
+                <div className="trust-nudge alert alert-info">
+                  <Info size={18} />
+                  <p>
+                    Completá 3 trabajos para desbloquear tu calificación pública.
+                    Ya tenés {bilateralCompletions} trabajo{bilateralCompletions !== 1 ? "s" : ""} completado{bilateralCompletions !== 1 ? "s" : ""}.
+                  </p>
+                </div>
+              );
+            }
+            return null;
+          })()}
 
           <section className="dashboard-panel">
             <div className="section-heading">

@@ -6,7 +6,8 @@ import {
 } from "lucide-react";
 import { useProvidersStore } from "../stores/providers-store";
 import { useAuthStore } from "../stores/auth-store";
-import { EmptyState, SkeletonRows, TrustBadge, VerificationBadge } from "../components/mvp/Ui";
+import { EmptyState, SkeletonRows, VerificationBadge } from "../components/mvp/Ui";
+import { TrustScoreBadge } from "../components/provider/TrustScoreBadge";
 import { canReceiveRequests, isLifecycleBlockingStatus, getProviderStatusBanner } from "../lib/identity";
 
 const availabilityLabelMap: Record<string, string> = {
@@ -128,7 +129,11 @@ export default function ProviderPage() {
             <span><Clock3 />Responde en {provider.responseTimeHrs || 24} h</span>
           </div>
           <div className="badges">
-            <TrustBadge score={trustScore} />
+            <TrustScoreBadge
+              trustScore={trustScore ? trustScore : null}
+              bilateralCompletions={provider.metrics?.bilateralCompletions ?? 0}
+              phoneVerified={provider.verified}
+            />
             <VerificationBadge level={(provider.verificationLevel as any) || "UNVERIFIED"} />
             <span className="badge"><ShieldCheck />{publicProfileSignal}</span>
           </div>
