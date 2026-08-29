@@ -50,6 +50,8 @@ import {
 import { prisma } from "./src/lib/db";
 import cron from "node-cron";
 import { resolveExpiredQuotes } from "./src/lib/cron/resolve-expired-quotes";
+import { recalculateProviderTrustScore } from "./src/lib/trust-score-service";
+import { checkReviewEligibility } from "./src/domain/requests/reviewRules";
 import {
   searchProviders,
   getFullProviderByIdOrSlug,
@@ -1117,6 +1119,12 @@ async function startServer() {
       const message = otherConfirmed
         ? "¡Trabajo confirmado! Ambas partes confirmaron el cierre."
         : "Confirmación registrada. Se activó ventana de 72h para que la otra parte confirme.";
+
+      if (otherConfirmed) {
+        recalculateProviderTrustScore(thread.providerId)
+          .catch((err) => console.error("[TrustScore] Recalc failed:", err));
+      }
+
       res.json({ success: true, message });
     } catch (error) {
       console.error("Complete quote error:", error);
@@ -1975,17 +1983,24 @@ async function startServer() {
         return res.status(404).json({ success: false, error: "Solicitud no encontrada para este proveedor" });
       }
 
-      if (request.status !== "COMPLETED" || !request.completedAt) {
-        return res.status(409).json({ success: false, error: "La reseña se habilita cuando la solicitud está completada por ambas partes" });
+      const eligibility = await checkReviewEligibility(requestId, userId);
+      if (!eligibility.eligible) {
+        const errorMessages: Record<string, string> = {
+          THREAD_NOT_FOUND: "Solicitud no encontrada",
+          ONLY_REQUESTER_CAN_REVIEW: "Solo el cliente puede reseñar",
+          SELF_REVIEW_NOT_ALLOWED: "No podés reseñar tu propio perfil",
+          THREAD_NOT_CLOSED: "La solicitud debe estar cerrada para reseñar",
+          ALREADY_REVIEWED: "Ya reseñaste esta solicitud",
+          OUTCOME_NOT_REVIEWABLE: "Este tipo de cierre no permite reseña",
+          NO_ENGAGEMENT_BEFORE_CANCELLATION: "No hubo suficiente interacción para reseñar",
+        };
+        const reason = (eligibility as { reason: string }).reason;
+        return res.status(409).json({
+          success: false,
+          error: errorMessages[reason] || "No podés reseñar esta solicitud",
+        });
       }
-
-      if (request.senderId !== userId) {
-        return res.status(403).json({ success: false, error: "Solo el solicitante puede reseñar esta solicitud" });
-      }
-
-      if (request.provider.userId === userId) {
-        return res.status(403).json({ success: false, error: "No podés reseñar tu propio perfil" });
-      }
+      const reviewWeight = eligibility.weight;
 
       const generalScore = (qualityScore + (responseTimeScore ?? qualityScore) + (fulfillmentScore ?? qualityScore) + (communicationScore ?? qualityScore) + (valueScore ?? qualityScore)) / 5;
 
@@ -2000,6 +2015,7 @@ async function startServer() {
           communicationScore: communicationScore ?? qualityScore,
           valueScore: valueScore ?? qualityScore,
           generalScore,
+          weight: reviewWeight,
           comment,
           analysis: {
             create: {
@@ -2032,6 +2048,8 @@ async function startServer() {
           totalVerifiedReviews: reviewStats._count.id,
         },
       });
+
+      await recalculateProviderTrustScore(providerId);
 
       res.status(201).json({ success: true, data: review });
     } catch (error) {
