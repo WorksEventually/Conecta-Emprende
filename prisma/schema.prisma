@@ -425,6 +425,7 @@ model Review {
   comment   String?         @db.Text
   sentiment Float?
   analysis  ReviewAnalysis?
+  history   ReviewHistory[]
   weight    Float           @default(1.0)
   editedAt  DateTime?
   createdAt DateTime        @default(now())
@@ -434,6 +435,24 @@ model Review {
   @@index([reviewerId])
   @@index([requestId])
   @@index([weight])
+}
+
+model ReviewHistory {
+  id         String @id @default(cuid())
+  reviewId   String
+  review     Review @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+
+  qualityScore       Int
+  responseTimeScore  Int
+  fulfillmentScore   Int
+  communicationScore Int
+  valueScore         Int
+  generalScore       Float
+  comment            String? @db.Text
+  editedAt           DateTime @default(now())
+  editedByUserId     String
+
+  @@index([reviewId])
 }
 
 model ReviewAnalysis {

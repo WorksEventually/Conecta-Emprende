@@ -27,6 +27,7 @@ import {
   quoteCompletionSchema,
   quoteAcceptanceSchema,
   reviewCreateSchema,
+  reviewUpdateSchema,
   riskReportEscalateSchema,
   riskReportQuerySchema,
   riskReportStatusSchema,
@@ -2055,6 +2056,65 @@ async function startServer() {
     } catch (error) {
       console.error("Create review error:", error);
       res.status(500).json({ success: false, error: "Error al crear reseña" });
+    }
+  });
+
+  app.patch("/api/reviews/:id", authenticate, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { userId } = req.user;
+      const parsed = reviewUpdateSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ success: false, error: "Los datos de la reseña son inválidos", details: parsed.error.issues });
+
+      const review = await prisma.review.findUnique({ where: { id } });
+      if (!review) return res.status(404).json({ success: false, error: "Reseña no encontrada" });
+
+      if (review.reviewerId !== userId) {
+        return res.status(403).json({ success: false, error: "Solo el autor puede editar esta reseña" });
+      }
+
+      const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+      if (Date.now() - review.createdAt.getTime() > SEVEN_DAYS_MS) {
+        return res.status(400).json({ success: false, error: "La reseña solo puede editarse durante los primeros 7 días" });
+      }
+
+      await prisma.reviewHistory.create({
+        data: {
+          reviewId: review.id,
+          qualityScore: review.qualityScore,
+          responseTimeScore: review.responseTimeScore,
+          fulfillmentScore: review.fulfillmentScore,
+          communicationScore: review.communicationScore,
+          valueScore: review.valueScore,
+          generalScore: review.generalScore,
+          comment: review.comment,
+          editedByUserId: userId,
+          editedAt: new Date(),
+        },
+      });
+
+      const merged = {
+        qualityScore: parsed.data.qualityScore ?? review.qualityScore,
+        responseTimeScore: parsed.data.responseTimeScore ?? review.responseTimeScore,
+        fulfillmentScore: parsed.data.fulfillmentScore ?? review.fulfillmentScore,
+        communicationScore: parsed.data.communicationScore ?? review.communicationScore,
+        valueScore: parsed.data.valueScore ?? review.valueScore,
+        comment: parsed.data.comment ?? review.comment,
+      };
+      const generalScore = (merged.qualityScore + merged.responseTimeScore + merged.fulfillmentScore + merged.communicationScore + merged.valueScore) / 5;
+
+      const updated = await prisma.review.update({
+        where: { id: review.id },
+        data: { ...merged, generalScore, editedAt: new Date() },
+        include: { reviewer: { select: { id: true, name: true, image: true } }, analysis: true },
+      });
+
+      await recalculateProviderTrustScore(review.providerId);
+
+      res.json({ success: true, data: updated });
+    } catch (error) {
+      console.error("Update review error:", error);
+      res.status(500).json({ success: false, error: "Error al editar reseña" });
     }
   });
 
