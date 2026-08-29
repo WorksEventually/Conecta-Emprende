@@ -625,7 +625,7 @@ model QuoteThread {
   clientAvatar String? // avatar abbreviation
   dateLabel    String? // "Ayer", "Hace 1 semana" - calculado en app
 
-  status String @default("OPEN") // OPEN | IN_CONVERSATION | QUOTE_SENT | QUOTE_ACCEPTED | COMPLETED | CLOSED_REQUESTER | CLOSED_PROVIDER | CANCELLED
+  status String @default("OPEN") // OPEN | IN_CONVERSATION | COMPLETED | CLOSED_REQUESTER | CLOSED_PROVIDER | CANCELLED
   // ⚠️ DEPRECADO — mantener temporalmente para compatibilidad durante migración.
   // Usar workflow_phase/closure_outcome en su lugar.
 
@@ -641,6 +641,12 @@ model QuoteThread {
   // Quote fields
   quotedPriceLabel       String?
   quotedDeliveryTime     String?
+
+  // Historial de cotizaciones (auditoría completa, no sobrescribir)
+  quotationHistory   Json? @default("[]") // JSON array: [{price, delivery, providerId, timestamp}]
+  // Evento de aceptación de precio por el cliente (traza de acuerdo)
+  acceptedQuotation  Json? // {price, delivery, acceptedAt, acceptedBy} | null
+
   confirmedByRequesterAt DateTime?
   confirmedByProviderAt  DateTime?
   completedAt            DateTime?
