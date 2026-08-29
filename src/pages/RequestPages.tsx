@@ -10,8 +10,6 @@ import { EmptyState, PageHeader, RequestStatusBadge } from "../components/mvp/Ui
 const statusLabel: Record<string, string> = {
   OPEN: "Abierta",
   IN_CONVERSATION: "En conversación",
-  QUOTE_SENT: "Cotización enviada",
-  QUOTE_ACCEPTED: "Cotización aceptada",
   COMPLETED: "Completada",
   CLOSED_REQUESTER: "Cerrada por cliente",
   CLOSED_PROVIDER: "Cerrada por proveedor",
@@ -19,8 +17,8 @@ const statusLabel: Record<string, string> = {
 };
 
 const tabs = [
-  { label: "Activas", statuses: ["OPEN", "IN_CONVERSATION", "QUOTE_SENT", "QUOTE_ACCEPTED"] },
-  { label: "No leídas", statuses: ["OPEN", "IN_CONVERSATION", "QUOTE_SENT", "QUOTE_ACCEPTED"] },
+  { label: "Activas", statuses: ["OPEN", "IN_CONVERSATION"] },
+  { label: "No leídas", statuses: ["OPEN", "IN_CONVERSATION"] },
   { label: "Completadas", statuses: ["COMPLETED"] },
   { label: "Cerradas", statuses: ["CLOSED_PROVIDER", "CLOSED_REQUESTER", "CANCELLED"] },
 ];
@@ -421,7 +419,7 @@ export function RequestDetailPage() {
                   Respuesta entre las partes
                 </span>
               </div>
-              <div className={["QUOTE_SENT", "QUOTE_ACCEPTED", "COMPLETED"].includes(thread.status) ? "done" : ""}>
+              <div className={["COMPLETED"].includes(thread.status) ? "done" : ""}>
                 <Circle />
                 <span>
                   <strong>Cotización</strong>

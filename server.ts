@@ -25,6 +25,7 @@ import {
   quoteMessageSchema,
   quoteUpdateSchema,
   quoteCompletionSchema,
+  quoteAcceptanceSchema,
   reviewCreateSchema,
   riskReportEscalateSchema,
   riskReportQuerySchema,
@@ -1021,7 +1022,7 @@ async function startServer() {
         return res.status(403).json({ success: false, error: "No participás en esta solicitud" });
       }
 
-      if ((quotedPriceLabel !== undefined || quotedDeliveryTime !== undefined || status === "QUOTE_SENT") && role !== "provider") {
+      if ((quotedPriceLabel !== undefined || quotedDeliveryTime !== undefined) && role !== "provider") {
         return res.status(403).json({ success: false, error: "Solo el proveedor puede enviar una cotización" });
       }
 
@@ -1031,10 +1032,6 @@ async function startServer() {
 
       if (confirmedByProviderAt && role !== "provider") {
         return res.status(403).json({ success: false, error: "Solo el proveedor puede confirmar esta parte" });
-      }
-
-      if (status === "QUOTE_ACCEPTED" && role !== "client") {
-        return res.status(403).json({ success: false, error: "Solo el solicitante puede aceptar la cotización" });
       }
 
       if (status === "CLOSED_PROVIDER" && role !== "provider") {
@@ -1052,6 +1049,25 @@ async function startServer() {
         confirmedByRequesterAt: Boolean(confirmedByRequesterAt),
         confirmedByProviderAt: Boolean(confirmedByProviderAt),
       });
+
+      // ✅ Auditoría: cada cotización enviada por el proveedor se agrega al historial (append-only)
+      if ((quotedPriceLabel !== undefined || quotedDeliveryTime !== undefined) && role === "provider") {
+        const currentHistory = (thread.quotationHistory as any[] | null) || [];
+        await prisma.quoteThread.update({
+          where: { id: threadId },
+          data: {
+            quotationHistory: [
+              ...currentHistory,
+              {
+                price: quotedPriceLabel ?? thread.quotedPriceLabel,
+                delivery: quotedDeliveryTime ?? thread.quotedDeliveryTime,
+                providerId: userId,
+                timestamp: new Date().toISOString(),
+              },
+            ],
+          },
+        });
+      }
 
       res.json({ success: true, data: updated });
     } catch (error) {
@@ -1095,7 +1111,7 @@ async function startServer() {
         updateData.completedAt = now;
       }
 
-      updateData.status = otherConfirmed ? "COMPLETED" : "QUOTE_ACCEPTED";
+      updateData.status = otherConfirmed ? "COMPLETED" : "IN_CONVERSATION";
 
       await prisma.quoteThread.update({ where: { id }, data: updateData });
       const message = otherConfirmed
@@ -1105,6 +1121,50 @@ async function startServer() {
     } catch (error) {
       console.error("Complete quote error:", error);
       res.status(500).json({ success: false, error: "Error al confirmar cierre" });
+    }
+  });
+
+  app.post("/api/quotes/:id/accept-quotation", authenticate, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { userId } = req.user;
+      const parsed = quoteAcceptanceSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ success: false, error: "Datos inválidos", details: parsed.error.issues });
+      }
+
+      const { thread, role } = await getThreadParticipantRole(id, userId);
+      if (!thread) return res.status(404).json({ success: false, error: "Solicitud no encontrada" });
+      if (!role) return res.status(403).json({ success: false, error: "No participás en esta solicitud" });
+
+      if (role !== "client") {
+        return res.status(403).json({ success: false, error: "Solo el cliente puede aceptar la cotización" });
+      }
+
+      if (thread.acceptedQuotation) {
+        return res.status(400).json({ success: false, error: "La cotización ya fue aceptada" });
+      }
+
+      if (!thread.quotedPriceLabel) {
+        return res.status(400).json({ success: false, error: "No hay cotización para aceptar" });
+      }
+
+      const acceptedQuotation = {
+        price: thread.quotedPriceLabel,
+        delivery: thread.quotedDeliveryTime,
+        acceptedAt: new Date().toISOString(),
+        acceptedBy: userId,
+      };
+
+      const updated = await prisma.quoteThread.update({
+        where: { id },
+        data: { acceptedQuotation },
+      });
+
+      res.json({ success: true, acceptedQuotation: updated.acceptedQuotation });
+    } catch (error) {
+      console.error("Accept quotation error:", error);
+      res.status(500).json({ success: false, error: "Error al aceptar cotización" });
     }
   });
 
