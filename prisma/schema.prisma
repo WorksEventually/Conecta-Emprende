@@ -626,6 +626,17 @@ model QuoteThread {
   dateLabel    String? // "Ayer", "Hace 1 semana" - calculado en app
 
   status String @default("OPEN") // OPEN | IN_CONVERSATION | QUOTE_SENT | QUOTE_ACCEPTED | COMPLETED | CLOSED_REQUESTER | CLOSED_PROVIDER | CANCELLED
+  // ⚠️ DEPRECADO — mantener temporalmente para compatibilidad durante migración.
+  // Usar workflow_phase/closure_outcome en su lugar.
+
+  // ═══════════════════════════════════════════════════════
+  // Modelo de 3 Ejes (Sprint 1 - Tarea 1.3)
+  // ═══════════════════════════════════════════════════════
+  workflow_phase   WorkflowPhase   @default(OPEN)
+  closure_outcome  ClosureOutcome?
+  moderation_state ModerationState @default(CLEAN)
+  completionDeadline DateTime?
+  // ═══════════════════════════════════════════════════════
 
   // Quote fields
   quotedPriceLabel       String?
@@ -642,6 +653,8 @@ model QuoteThread {
   @@index([senderId])
   @@index([providerId])
   @@index([status])
+  @@index([workflow_phase])
+  @@index([completionDeadline])
 }
 
 model QuoteOffer {
@@ -705,4 +718,29 @@ model FormalizationStep {
   @@unique([providerId, code])
   @@index([providerId])
   @@index([sortOrder])
+}
+
+// ──────────────────────────────────────────────────────────
+// Modelo de 3 Ejes para Solicitudes de Cotización (Sprint 1)
+// ──────────────────────────────────────────────────────────
+
+enum WorkflowPhase {
+  OPEN // Solicitud activa, sin cierre solicitado
+  COMPLETION_PENDING // Una o ambas partes confirmaron; esperando 72h
+  CLOSED // Cerrado definitivamente
+}
+
+enum ClosureOutcome {
+  BILATERAL // Ambos confirmaron < 72h
+  REQUESTER_CONFIRMED_PROVIDER_NO_RESPONSE // Cliente confirmó, proveedor timeout
+  PROVIDER_CLAIMED_REQUESTER_NO_RESPONSE // Proveedor confirmó, cliente timeout
+  CANCELLED_BY_REQUESTER // Cliente canceló explícitamente
+  CANCELLED_BY_PROVIDER // Proveedor canceló explícitamente
+  MODERATION_CLOSURE // Cerrado por acción de moderación
+}
+
+enum ModerationState {
+  CLEAN // Sin flags
+  FLAGGED // Bajo revisión de moderación
+  RESTRICTED // Restringido por moderación
 }

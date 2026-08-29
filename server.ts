@@ -24,6 +24,7 @@ import {
   providerSuspendSchema,
   quoteMessageSchema,
   quoteUpdateSchema,
+  quoteCompletionSchema,
   reviewCreateSchema,
   riskReportEscalateSchema,
   riskReportQuerySchema,
@@ -46,6 +47,8 @@ import {
   type TokenPayload,
 } from "./src/lib/auth";
 import { prisma } from "./src/lib/db";
+import cron from "node-cron";
+import { resolveExpiredQuotes } from "./src/lib/cron/resolve-expired-quotes";
 import {
   searchProviders,
   getFullProviderByIdOrSlug,
@@ -872,7 +875,7 @@ async function startServer() {
   });
 
   // POST Generate AI Quote Draft (Left intact as it hits external API or mocked local)
-  app.post("/api/quotes/draft", async (req, res) => {
+  app.post("/api/quotes/draft", authenticate, async (req, res) => {
     try {
       const parsed = quoteDraftRequestSchema.safeParse(req.body);
       if (!parsed.success) {
@@ -1054,6 +1057,54 @@ async function startServer() {
     } catch (error) {
       console.error("Update quote error:", error);
       res.status(500).json({ success: false, error: "Error al actualizar cotización" });
+    }
+  });
+
+  app.patch("/api/quotes/:id/complete", authenticate, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { userId } = req.user;
+      const parsed = quoteCompletionSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ success: false, error: "Datos inválidos", details: parsed.error.issues });
+      }
+      const { role } = parsed.data;
+
+      const { thread, role: participantRole } = await getThreadParticipantRole(id, userId);
+      if (!thread) return res.status(404).json({ success: false, error: "Solicitud no encontrada" });
+      if (!participantRole) return res.status(403).json({ success: false, error: "No participás en esta solicitud" });
+
+      const mappedRole = participantRole === "client" ? "REQUESTER" : "PROVIDER";
+      if (mappedRole !== role) return res.status(403).json({ success: false, error: `Tu rol es ${mappedRole}, no ${role}` });
+      if (thread.workflow_phase === "CLOSED") return res.status(400).json({ success: false, error: "Esta solicitud ya está cerrada" });
+
+      const now = new Date();
+      const deadline = new Date(now.getTime() + 72 * 60 * 60 * 1000);
+      const updateData: any = { workflow_phase: "COMPLETION_PENDING", completionDeadline: deadline };
+
+      if (role === "REQUESTER") updateData.confirmedByRequesterAt = now;
+      else updateData.confirmedByProviderAt = now;
+
+      const otherConfirmed =
+        (role === "REQUESTER" && thread.confirmedByProviderAt) ||
+        (role === "PROVIDER" && thread.confirmedByRequesterAt);
+
+      if (otherConfirmed) {
+        updateData.workflow_phase = "CLOSED";
+        updateData.closure_outcome = "BILATERAL";
+        updateData.completedAt = now;
+      }
+
+      updateData.status = otherConfirmed ? "COMPLETED" : "QUOTE_ACCEPTED";
+
+      await prisma.quoteThread.update({ where: { id }, data: updateData });
+      const message = otherConfirmed
+        ? "¡Trabajo confirmado! Ambas partes confirmaron el cierre."
+        : "Confirmación registrada. Se activó ventana de 72h para que la otra parte confirme.";
+      res.json({ success: true, message });
+    } catch (error) {
+      console.error("Complete quote error:", error);
+      res.status(500).json({ success: false, error: "Error al confirmar cierre" });
     }
   });
 
@@ -1345,6 +1396,15 @@ async function startServer() {
     } catch (error) {
       console.error("Audit log error:", error);
       res.status(500).json({ success: false, error: "Error al obtener auditoría" });
+    }
+  });
+
+  app.post("/api/admin/resolve-expired-quotes", authenticate, requireSuperAdmin, async (req, res) => {
+    try {
+      const result = await resolveExpiredQuotes();
+      res.json({ success: true, ...result });
+    } catch (error: any) {
+      res.status(500).json({ success: false, error: error.message });
     }
   });
 
@@ -1972,6 +2032,14 @@ async function startServer() {
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`\n🚀 Conecta Emprende AI Server running on http://0.0.0.0:${PORT}`);
   });
+
+  if (process.env.NODE_ENV !== "test") {
+    cron.schedule("*/10 * * * *", async () => {
+      try { await resolveExpiredQuotes(); }
+      catch (error) { console.error("[Cron] Error resolving expired quotes:", error); }
+    });
+    console.log("✓ Cron job: resolve expired quotes every 10 minutes");
+  }
 }
 
 startServer();

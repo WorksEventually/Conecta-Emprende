@@ -17,6 +17,10 @@ export interface QuoteThread {
   clientAvatar: string | null;
   dateLabel: string | null;
   status: string;
+  workflow_phase?: string;
+  closure_outcome?: string | null;
+  moderation_state?: string;
+  completionDeadline?: string | null;
   quotedPriceLabel: string | null;
   quotedDeliveryTime: string | null;
   confirmedByRequesterAt: string | null;

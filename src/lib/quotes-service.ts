@@ -1,4 +1,21 @@
+import type { WorkflowPhase, ClosureOutcome, ModerationState } from "@prisma/client";
 import { prisma } from "./db";
+
+export function getLegacyDisplayStatus(
+  workflow_phase: WorkflowPhase | string,
+  closure_outcome: ClosureOutcome | string | null
+): string {
+  if (workflow_phase === "CLOSED") {
+    switch (closure_outcome) {
+      case "BILATERAL": return "COMPLETED";
+      case "CANCELLED_BY_REQUESTER": return "CLOSED_REQUESTER";
+      case "CANCELLED_BY_PROVIDER": return "CLOSED_PROVIDER";
+      default: return "CLOSED";
+    }
+  }
+  if (workflow_phase === "COMPLETION_PENDING") return "QUOTE_ACCEPTED";
+  return "OPEN";
+}
 
 export interface QuoteThreadWithMessages {
   id: string;
@@ -10,6 +27,10 @@ export interface QuoteThreadWithMessages {
   clientAvatar: string | null;
   dateLabel: string | null;
   status: string;
+  workflow_phase: string;
+  closure_outcome: string | null;
+  moderation_state: string;
+  completionDeadline: string | null;
   quotedPriceLabel: string | null;
   quotedDeliveryTime: string | null;
   confirmedByRequesterAt: string | null;
@@ -31,7 +52,11 @@ function mapThread(t: any): QuoteThreadWithMessages {
     clientName: t.clientName || t.sender?.name || "Cliente",
     clientAvatar: t.clientAvatar || (t.sender?.name?.split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2) || "CL"),
     dateLabel: t.dateLabel || computeDateLabel(t.createdAt),
-    status: t.status,
+    status: t.status || getLegacyDisplayStatus(t.workflow_phase, t.closure_outcome),
+    workflow_phase: t.workflow_phase,
+    closure_outcome: t.closure_outcome,
+    moderation_state: t.moderation_state,
+    completionDeadline: t.completionDeadline?.toISOString() || null,
     quotedPriceLabel: t.quotedPriceLabel,
     quotedDeliveryTime: t.quotedDeliveryTime,
     confirmedByRequesterAt: t.confirmedByRequesterAt?.toISOString() || null,

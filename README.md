@@ -64,6 +64,18 @@ Los roles granulares (`REQUESTER`, `PROVIDER`, `ADMIN_REVIEWER`, `SUPER_ADMIN`) 
 
 Los datos de dominio persisten en `localStorage`; la sesión nunca se incluye en esa serialización. Mientras se conecta el login real, la aplicación inicia con la cuenta administradora que también posee `provider-1`.
 
+## Modelo de 3 ejes para solicitudes de cotización
+
+Las solicitudes (`QuoteThread`) ya no dependen de un único estado lineal: se representan con tres ejes ortogonales (`workflow_phase` × `closure_outcome` × `moderation_state`):
+
+- `workflow_phase`: `OPEN` → `COMPLETION_PENDING` → `CLOSED`.
+- `closure_outcome`: define cómo terminó un thread cerrado (`BILATERAL`, `CANCELLED_BY_REQUESTER`, `CANCELLED_BY_PROVIDER`, `MODERATION_CLOSURE`, o outcomes unilaterales por timeout de 72h).
+- `moderation_state`: `CLEAN` / `FLAGGED` / `RESTRICTED`.
+
+Cuando una parte confirma el trabajo (`PATCH /api/quotes/:id/complete`), se abre una ventana de 72h (`completionDeadline`) para que la otra confirme. Un cron job (`node-cron`, cada 10 min) cierra automáticamente los threads vencidos determinando el outcome. También existe el endpoint manual de respaldo `POST /api/admin/resolve-expired-quotes`.
+
+El campo `status` (String) se mantiene temporalmente como capa de compatibilidad para la UI y se migra a los 3 ejes con `npx tsx scripts/migrate_quote_status_to_3axis.ts`.
+
 Para desactivar ese bootstrap al conectar autenticación:
 
 ```bash
