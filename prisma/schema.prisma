@@ -396,6 +396,9 @@ model ProviderMetrics {
   requestsResponded         Int      @default(0)
   suspiciousActivityPenalty Float    @default(0)
   trustScore                Float    @default(0)
+  bilateralCompletions      Int      @default(0)
+  uniqueRequesters          Int      @default(0)
+  lastRecalculatedAt        DateTime?
   calculatedAt              DateTime @default(now())
   updatedAt                 DateTime @updatedAt
 
@@ -422,12 +425,15 @@ model Review {
   comment   String?         @db.Text
   sentiment Float?
   analysis  ReviewAnalysis?
+  weight    Float           @default(1.0)
+  editedAt  DateTime?
   createdAt DateTime        @default(now())
 
   @@unique([requestId, providerId, reviewerId])
   @@index([providerId])
   @@index([reviewerId])
   @@index([requestId])
+  @@index([weight])
 }
 
 model ReviewAnalysis {
@@ -741,7 +747,8 @@ enum ClosureOutcome {
   REQUESTER_CONFIRMED_PROVIDER_NO_RESPONSE // Cliente confirmó, proveedor timeout
   PROVIDER_CLAIMED_REQUESTER_NO_RESPONSE // Proveedor confirmó, cliente timeout
   CANCELLED_BY_REQUESTER // Cliente canceló explícitamente
-  CANCELLED_BY_PROVIDER // Proveedor canceló explícitamente
+  CANCELLED_BY_PROVIDER // Proveedor canceló explícitamente sin interacción previa
+  CANCELLED_BY_PROVIDER_AFTER_ENGAGEMENT // Proveedor canceló tras interacción (habilita reseña peso 0.5)
   MODERATION_CLOSURE // Cerrado por acción de moderación
 }
 

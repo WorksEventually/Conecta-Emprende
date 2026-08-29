@@ -11,7 +11,8 @@
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
     "db:seed": "prisma db seed",
-    "test:admin-permissions": "tsx scripts/test_admin_permissions.ts"
+    "test:admin-permissions": "tsx scripts/test_admin_permissions.ts",
+    "test:trust-v2": "tsx scripts/test_trust_score_v2.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
