@@ -125,3 +125,14 @@ export const reviewCreateSchema = z.object({
   communicationScore: reviewScore.optional(), valueScore: reviewScore.optional(),
   comment: z.string().trim().max(5000).optional(),
 });
+
+export const reviewUpdateSchema = z.object({
+  qualityScore: reviewScore.optional(),
+  responseTimeScore: reviewScore.optional(),
+  fulfillmentScore: reviewScore.optional(),
+  communicationScore: reviewScore.optional(),
+  valueScore: reviewScore.optional(),
+  comment: z.string().trim().max(5000).optional(),
+}).refine(data => Object.keys(data).length > 0, {
+  message: "Debe enviar al menos un campo a actualizar",
+});

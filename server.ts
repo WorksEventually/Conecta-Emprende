@@ -27,6 +27,7 @@ import {
   quoteCompletionSchema,
   quoteAcceptanceSchema,
   reviewCreateSchema,
+  reviewUpdateSchema,
   riskReportEscalateSchema,
   riskReportQuerySchema,
   riskReportStatusSchema,
@@ -50,6 +51,8 @@ import {
 import { prisma } from "./src/lib/db";
 import cron from "node-cron";
 import { resolveExpiredQuotes } from "./src/lib/cron/resolve-expired-quotes";
+import { recalculateProviderTrustScore } from "./src/lib/trust-score-service";
+import { checkReviewEligibility } from "./src/domain/requests/reviewRules";
 import {
   searchProviders,
   getFullProviderByIdOrSlug,
@@ -1117,6 +1120,12 @@ async function startServer() {
       const message = otherConfirmed
         ? "¡Trabajo confirmado! Ambas partes confirmaron el cierre."
         : "Confirmación registrada. Se activó ventana de 72h para que la otra parte confirme.";
+
+      if (otherConfirmed) {
+        recalculateProviderTrustScore(thread.providerId)
+          .catch((err) => console.error("[TrustScore] Recalc failed:", err));
+      }
+
       res.json({ success: true, message });
     } catch (error) {
       console.error("Complete quote error:", error);
@@ -1975,17 +1984,24 @@ async function startServer() {
         return res.status(404).json({ success: false, error: "Solicitud no encontrada para este proveedor" });
       }
 
-      if (request.status !== "COMPLETED" || !request.completedAt) {
-        return res.status(409).json({ success: false, error: "La reseña se habilita cuando la solicitud está completada por ambas partes" });
+      const eligibility = await checkReviewEligibility(requestId, userId);
+      if (!eligibility.eligible) {
+        const errorMessages: Record<string, string> = {
+          THREAD_NOT_FOUND: "Solicitud no encontrada",
+          ONLY_REQUESTER_CAN_REVIEW: "Solo el cliente puede reseñar",
+          SELF_REVIEW_NOT_ALLOWED: "No podés reseñar tu propio perfil",
+          THREAD_NOT_CLOSED: "La solicitud debe estar cerrada para reseñar",
+          ALREADY_REVIEWED: "Ya reseñaste esta solicitud",
+          OUTCOME_NOT_REVIEWABLE: "Este tipo de cierre no permite reseña",
+          NO_ENGAGEMENT_BEFORE_CANCELLATION: "No hubo suficiente interacción para reseñar",
+        };
+        const reason = (eligibility as { reason: string }).reason;
+        return res.status(409).json({
+          success: false,
+          error: errorMessages[reason] || "No podés reseñar esta solicitud",
+        });
       }
-
-      if (request.senderId !== userId) {
-        return res.status(403).json({ success: false, error: "Solo el solicitante puede reseñar esta solicitud" });
-      }
-
-      if (request.provider.userId === userId) {
-        return res.status(403).json({ success: false, error: "No podés reseñar tu propio perfil" });
-      }
+      const reviewWeight = eligibility.weight;
 
       const generalScore = (qualityScore + (responseTimeScore ?? qualityScore) + (fulfillmentScore ?? qualityScore) + (communicationScore ?? qualityScore) + (valueScore ?? qualityScore)) / 5;
 
@@ -2000,6 +2016,7 @@ async function startServer() {
           communicationScore: communicationScore ?? qualityScore,
           valueScore: valueScore ?? qualityScore,
           generalScore,
+          weight: reviewWeight,
           comment,
           analysis: {
             create: {
@@ -2033,10 +2050,71 @@ async function startServer() {
         },
       });
 
+      await recalculateProviderTrustScore(providerId);
+
       res.status(201).json({ success: true, data: review });
     } catch (error) {
       console.error("Create review error:", error);
       res.status(500).json({ success: false, error: "Error al crear reseña" });
+    }
+  });
+
+  app.patch("/api/reviews/:id", authenticate, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { userId } = req.user;
+      const parsed = reviewUpdateSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ success: false, error: "Los datos de la reseña son inválidos", details: parsed.error.issues });
+
+      const review = await prisma.review.findUnique({ where: { id } });
+      if (!review) return res.status(404).json({ success: false, error: "Reseña no encontrada" });
+
+      if (review.reviewerId !== userId) {
+        return res.status(403).json({ success: false, error: "Solo el autor puede editar esta reseña" });
+      }
+
+      const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+      if (Date.now() - review.createdAt.getTime() > SEVEN_DAYS_MS) {
+        return res.status(400).json({ success: false, error: "La reseña solo puede editarse durante los primeros 7 días" });
+      }
+
+      await prisma.reviewHistory.create({
+        data: {
+          reviewId: review.id,
+          qualityScore: review.qualityScore,
+          responseTimeScore: review.responseTimeScore,
+          fulfillmentScore: review.fulfillmentScore,
+          communicationScore: review.communicationScore,
+          valueScore: review.valueScore,
+          generalScore: review.generalScore,
+          comment: review.comment,
+          editedByUserId: userId,
+          editedAt: new Date(),
+        },
+      });
+
+      const merged = {
+        qualityScore: parsed.data.qualityScore ?? review.qualityScore,
+        responseTimeScore: parsed.data.responseTimeScore ?? review.responseTimeScore,
+        fulfillmentScore: parsed.data.fulfillmentScore ?? review.fulfillmentScore,
+        communicationScore: parsed.data.communicationScore ?? review.communicationScore,
+        valueScore: parsed.data.valueScore ?? review.valueScore,
+        comment: parsed.data.comment ?? review.comment,
+      };
+      const generalScore = (merged.qualityScore + merged.responseTimeScore + merged.fulfillmentScore + merged.communicationScore + merged.valueScore) / 5;
+
+      const updated = await prisma.review.update({
+        where: { id: review.id },
+        data: { ...merged, generalScore, editedAt: new Date() },
+        include: { reviewer: { select: { id: true, name: true, image: true } }, analysis: true },
+      });
+
+      await recalculateProviderTrustScore(review.providerId);
+
+      res.json({ success: true, data: updated });
+    } catch (error) {
+      console.error("Update review error:", error);
+      res.status(500).json({ success: false, error: "Error al editar reseña" });
     }
   });
 
