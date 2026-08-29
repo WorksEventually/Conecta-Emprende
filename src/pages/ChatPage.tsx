@@ -594,7 +594,7 @@ function RequestSummaryUI({
   onAcceptQuote,
   canAccept,
 }: {
-  thread: { subject?: string; body?: string; quotedPriceLabel?: string | null; quotedDeliveryTime?: string | null; status?: string; createdAt?: string };
+  thread: { id?: string; subject?: string; body?: string; quotedPriceLabel?: string | null; quotedDeliveryTime?: string | null; status?: string; createdAt?: string };
   providerName: string;
   onAcceptQuote?: () => void;
   canAccept?: boolean;
@@ -632,7 +632,7 @@ function RequestSummaryUI({
           👍 De acuerdo con este precio
         </button>
       )}
-      <Link className="text-link" to={`/requests/${thread.subject}`}>Ver detalle completo</Link>
+      <Link className="text-link" to={`/requests/${thread.id}`}>Ver detalle completo</Link>
     </section>
   );
 }
