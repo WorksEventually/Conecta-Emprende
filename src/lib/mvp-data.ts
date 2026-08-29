@@ -7,7 +7,7 @@ export type PriceRange = "LOW" | "MEDIUM" | "HIGH" | "NEGOTIABLE";
 export type Availability = "AVAILABLE" | "BUSY" | "UNAVAILABLE";
 export type FormalizationStatus = "INFORMAL" | "IN_PROGRESS" | "MIPYME";
 export type VerificationLevel = "UNVERIFIED" | "PHONE" | "COMPLETE";
-export type RequestStatus = "DRAFT" | "OPEN" | "IN_CONVERSATION" | "QUOTE_SENT" | "QUOTE_ACCEPTED" | "CLOSED_BY_REQUESTER" | "CLOSED_BY_PROVIDER" | "COMPLETED" | "CANCELLED" | "DISPUTED";
+export type RequestStatus = "DRAFT" | "OPEN" | "IN_CONVERSATION" | "CLOSED_BY_REQUESTER" | "CLOSED_BY_PROVIDER" | "COMPLETED" | "CANCELLED" | "DISPUTED";
 export type OfferType = "PRODUCT" | "SERVICE" | "PACKAGE" | "PORTFOLIO_ITEM";
 export type OfferStatus = "ACTIVE" | "INACTIVE" | "ARCHIVED";
 export type PriceType = "FIXED" | "FROM" | "NEGOTIABLE" | "PER_UNIT" | "PER_PROJECT";
@@ -117,7 +117,7 @@ export const seedRequests: QuoteRequest[] = Array.from({ length: 10 }, (_, index
   return {
     id:`request-${index+1}`,requesterId:"user-client",requesterName:"Andrea López",providerId:`provider-${(index%8)+1}`,productId:index<5?`offer-${(index%8)+1}-1`:null,
     title:["Identidad para nuevo negocio","Empaque para café","Pedido de uniformes","Catálogo de productos"][index%4],description:"Necesito una propuesta clara con alcance, tiempo estimado y condiciones de entrega para mi emprendimiento.",budgetRange:(["LOW","MEDIUM","HIGH"] as PriceRange[])[index%3],location:CREATIVE_CITIES[index%10],contactPreference:"Mensajes de la plataforma",
-    status:completed?"COMPLETED":index<7?"QUOTE_SENT":index<9?"IN_CONVERSATION":"OPEN",quotedPriceLabel:index<7?`C$${1200+index*350}`:undefined,quotedDeliveryTime:index<7?"5 días":undefined,
+    status:completed?"COMPLETED":index<7?"IN_CONVERSATION":index<9?"IN_CONVERSATION":"OPEN",quotedPriceLabel:index<7?`C$${1200+index*350}`:undefined,quotedDeliveryTime:index<7?"5 días":undefined,
     confirmedByRequesterAt:completed?"2026-06-20T14:00:00.000Z":null,confirmedByProviderAt:completed?"2026-06-20T16:00:00.000Z":null,completedAt:completed?"2026-06-20T16:00:00.000Z":null,createdAt,updatedAt:createdAt,unreadByProvider:index%3,unreadByRequester:index%2,
     messages:[
       {id:`system-${index}`,author:"system",senderId:"SYSTEM",type:"SYSTEM",text:"Esta conversación queda vinculada a tu solicitud para dar seguimiento y desbloquear una reseña verificada al finalizar.",createdAt},

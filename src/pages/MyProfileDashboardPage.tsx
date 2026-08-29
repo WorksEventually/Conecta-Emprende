@@ -26,7 +26,7 @@ import {
   VerificationBadge,
 } from "../components/mvp/Ui";
 
-const ACTIVE_STATUSES = ["OPEN", "IN_CONVERSATION", "QUOTE_SENT", "QUOTE_ACCEPTED"];
+const ACTIVE_STATUSES = ["OPEN", "IN_CONVERSATION"];
 
 function AccountSummary({ user }: { user: AuthUser }) {
   const displayName = user.name || user.email?.split("@")[0] || "Usuario";
