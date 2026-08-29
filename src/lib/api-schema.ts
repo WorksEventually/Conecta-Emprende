@@ -67,7 +67,7 @@ const reviewScore = z.number().min(0, "La puntuación mínima es 0").max(5, "La 
 export const quoteMessageSchema = z.object({ text: z.string().trim().min(1, "El mensaje es obligatorio").max(10000) });
 
 export const quoteUpdateSchema = z.object({
-  status: z.enum(["OPEN", "IN_CONVERSATION", "QUOTE_SENT", "QUOTE_ACCEPTED", "COMPLETED", "CLOSED_REQUESTER", "CLOSED_PROVIDER", "CANCELLED"]).optional(),
+  status: z.enum(["OPEN", "IN_CONVERSATION", "COMPLETED", "CLOSED_REQUESTER", "CLOSED_PROVIDER", "CANCELLED"]).optional(),
   quotedPriceLabel: optionalTrimmedText,
   quotedDeliveryTime: optionalTrimmedText,
   confirmedByRequesterAt: z.union([z.boolean(), z.string().datetime()]).optional(),
@@ -76,6 +76,11 @@ export const quoteUpdateSchema = z.object({
 
 export const quoteCompletionSchema = z.object({
   role: z.enum(["REQUESTER", "PROVIDER"]),
+});
+
+export const quoteAcceptanceSchema = z.object({
+  price: z.string().trim().optional(),
+  delivery: z.string().trim().optional(),
 });
 
 export const riskReportQuerySchema = z.object({
