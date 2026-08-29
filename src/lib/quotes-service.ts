@@ -13,7 +13,7 @@ export function getLegacyDisplayStatus(
       default: return "CLOSED";
     }
   }
-  if (workflow_phase === "COMPLETION_PENDING") return "QUOTE_ACCEPTED";
+  if (workflow_phase === "COMPLETION_PENDING") return "IN_CONVERSATION";
   return "OPEN";
 }
 
@@ -33,6 +33,8 @@ export interface QuoteThreadWithMessages {
   completionDeadline: string | null;
   quotedPriceLabel: string | null;
   quotedDeliveryTime: string | null;
+  acceptedQuotation: any;
+  quotationHistory: any[];
   confirmedByRequesterAt: string | null;
   confirmedByProviderAt: string | null;
   completedAt: string | null;
@@ -59,6 +61,8 @@ function mapThread(t: any): QuoteThreadWithMessages {
     completionDeadline: t.completionDeadline?.toISOString() || null,
     quotedPriceLabel: t.quotedPriceLabel,
     quotedDeliveryTime: t.quotedDeliveryTime,
+    acceptedQuotation: t.acceptedQuotation,
+    quotationHistory: t.quotationHistory || [],
     confirmedByRequesterAt: t.confirmedByRequesterAt?.toISOString() || null,
     confirmedByProviderAt: t.confirmedByProviderAt?.toISOString() || null,
     completedAt: t.completedAt?.toISOString() || null,
