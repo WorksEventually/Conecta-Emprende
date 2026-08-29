@@ -10,6 +10,7 @@ export function getLegacyDisplayStatus(
       case "BILATERAL": return "COMPLETED";
       case "CANCELLED_BY_REQUESTER": return "CLOSED_REQUESTER";
       case "CANCELLED_BY_PROVIDER": return "CLOSED_PROVIDER";
+      case "CANCELLED_BY_PROVIDER_AFTER_ENGAGEMENT": return "CLOSED_PROVIDER";
       default: return "CLOSED";
     }
   }
@@ -250,6 +251,28 @@ export async function updateThread(threadId: string, data: {
   }
   if (data.confirmedByProviderAt) {
     updateData.confirmedByProviderAt = new Date();
+  }
+
+  // Cierre explícito del proveedor: distinguir si hubo interacción previa
+  // para asignar CANCELLED_BY_PROVIDER_AFTER_ENGAGEMENT (habilita reseña 0.5)
+  // vs CANCELLED_BY_PROVIDER (sin reseña).
+  if (data.status === "CLOSED_PROVIDER") {
+    const current = await prisma.quoteThread.findUnique({
+      where: { id: threadId },
+      include: { messages: { select: { id: true } } },
+    });
+
+    if (current) {
+      const hasEngagement =
+        (current.messages?.length ?? 0) >= 2 ||
+        !!current.quotedPriceLabel ||
+        !!current.acceptedQuotation;
+
+      updateData.closure_outcome = hasEngagement
+        ? "CANCELLED_BY_PROVIDER_AFTER_ENGAGEMENT"
+        : "CANCELLED_BY_PROVIDER";
+      updateData.workflow_phase = "CLOSED";
+    }
   }
 
   const thread = await prisma.quoteThread.update({

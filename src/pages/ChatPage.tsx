@@ -582,6 +582,7 @@ function getClosureOutcomeMessage(outcome: string): string {
     PROVIDER_CLAIMED_REQUESTER_NO_RESPONSE: "El proveedor confirmó pero el cliente no respondió dentro de 72 horas.",
     CANCELLED_BY_REQUESTER: "Cancelado por el cliente.",
     CANCELLED_BY_PROVIDER: "Cancelado por el proveedor.",
+    CANCELLED_BY_PROVIDER_AFTER_ENGAGEMENT: "El proveedor canceló después de interactuar. Podés dejar una reseña calificada.",
     MODERATION_CLOSURE: "Cerrado por moderación.",
   };
   return messages[outcome] || "Cerrado.";
