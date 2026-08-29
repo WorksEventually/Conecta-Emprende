@@ -106,8 +106,13 @@ export default function ChatPage() {
       await updateThread(requestId, {
         quotedPriceLabel: price.trim(),
         quotedDeliveryTime: delivery.trim(),
-        status: "QUOTE_SENT",
       });
+
+      await addMessage(
+        requestId,
+        `📋 Cotización enviada:\n💰 Precio: ${price.trim()}\n📅 Tiempo de entrega: ${delivery.trim()}`
+      );
+
       setQuoteOpen(false);
       await getThread(requestId);
     } catch (e) {
@@ -115,13 +120,26 @@ export default function ChatPage() {
     }
   };
 
-  const handleAcceptQuote = async () => {
-    if (!requestId) return;
+  const handleAcceptQuotation = async () => {
+    if (!requestId || !thread?.quotedPriceLabel) return;
     try {
-      await updateThread(requestId, { status: "QUOTE_ACCEPTED" });
+      await fetch(`/api/quotes/${requestId}/accept-quotation`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          price: thread.quotedPriceLabel,
+          delivery: thread.quotedDeliveryTime,
+        }),
+      });
+
+      await addMessage(
+        requestId,
+        `✅ El cliente aceptó la cotización: ${thread.quotedPriceLabel}`
+      );
+
       await getThread(requestId);
     } catch (e) {
-      console.error("Accept quote error:", e);
+      console.error("Accept quotation error:", e);
     }
   };
 
@@ -260,7 +278,12 @@ export default function ChatPage() {
 
         <details className="chat-mobile-summary">
           <summary>Resumen de la solicitud <ChevronDown /></summary>
-          <RequestSummaryUI thread={thread} providerName={providerName} />
+          <RequestSummaryUI
+            thread={thread}
+            providerName={providerName}
+            canAccept={actor === "requester" && (!thread.acceptedQuotation || thread.acceptedQuotation.price !== thread.quotedPriceLabel)}
+            onAcceptQuote={handleAcceptQuotation}
+          />
         </details>
 
         <section className="retention-banner">
@@ -301,6 +324,18 @@ export default function ChatPage() {
                 providerName={providerName}
                 requesterName={clientName}
               />
+              {message.text.includes("📋 Cotización enviada") &&
+                actor === "requester" &&
+                (!thread.acceptedQuotation || 
+                 thread.acceptedQuotation.price !== thread.quotedPriceLabel) && (
+                  <button
+                    className="button-inline small"
+                    onClick={handleAcceptQuotation}
+                    title="Registrar que estás de acuerdo con este precio"
+                  >
+                    👍 De acuerdo
+                  </button>
+                )}
             </article>
           ))}
           <div ref={bottomRef} />
@@ -374,25 +409,20 @@ export default function ChatPage() {
       </main>
 
       <aside className="chat-context">
-        <RequestSummaryUI thread={thread} providerName={providerName} />
+        <RequestSummaryUI
+          thread={thread}
+          providerName={providerName}
+          canAccept={actor === "requester" && (!thread.acceptedQuotation || thread.acceptedQuotation.price !== thread.quotedPriceLabel)}
+          onAcceptQuote={handleAcceptQuotation}
+        />
         <section className="chat-context-section">
           <h2>Próxima acción</h2>
-          {thread.status === "OPEN" && (
-            <p>El proveedor debe responder para iniciar la negociación.</p>
-          )}
-          {thread.status === "IN_CONVERSATION" && (
-            <p>Definan precio, alcance y fecha de entrega.</p>
-          )}
-          {thread.status === "QUOTE_SENT" && (
-            <>
-              <p>La cotización espera respuesta del cliente.</p>
-              <button className="button primary full" onClick={handleAcceptQuote}>
-                Aceptar cotización
-              </button>
-            </>
-          )}
-          {thread.status === "QUOTE_ACCEPTED" && (
-            <p>El acuerdo está aceptado. Confirmen cuando el trabajo termine.</p>
+          {thread.workflow_phase === "OPEN" && (
+            <p>
+              {thread.quotedPriceLabel
+                ? "Definan los detalles finales y confirmen cuando el trabajo termine."
+                : "Definan precio, alcance y fecha de entrega."}
+            </p>
           )}
           {thread.workflow_phase === "COMPLETION_PENDING" && (
             <p>
@@ -409,10 +439,13 @@ export default function ChatPage() {
               para confirmar.
             </p>
           )}
-          {thread.status === "COMPLETED" && (
+          {thread.workflow_phase === "CLOSED" && thread.closure_outcome === "BILATERAL" && (
             <p className="success-note">
               <BadgeCheck /> Reseña verificada desbloqueada.
             </p>
+          )}
+          {thread.workflow_phase === "CLOSED" && thread.closure_outcome !== "BILATERAL" && (
+            <p>Trabajo cerrado: {getClosureOutcomeMessage(thread.closure_outcome)}</p>
           )}
         </section>
         <section className="chat-context-section">
@@ -557,9 +590,13 @@ function getClosureOutcomeMessage(outcome: string): string {
 function RequestSummaryUI({
   thread,
   providerName,
+  onAcceptQuote,
+  canAccept,
 }: {
   thread: { subject?: string; body?: string; quotedPriceLabel?: string | null; quotedDeliveryTime?: string | null; status?: string; createdAt?: string };
   providerName: string;
+  onAcceptQuote?: () => void;
+  canAccept?: boolean;
 }) {
   const clientMsg = thread.body;
   return (
@@ -589,6 +626,11 @@ function RequestSummaryUI({
           </div>
         )}
       </dl>
+      {canAccept && onAcceptQuote && (
+        <button className="button secondary small full" onClick={onAcceptQuote}>
+          👍 De acuerdo con este precio
+        </button>
+      )}
       <Link className="text-link" to={`/requests/${thread.subject}`}>Ver detalle completo</Link>
     </section>
   );
