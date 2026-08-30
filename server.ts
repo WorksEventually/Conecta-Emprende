@@ -1097,6 +1097,20 @@ async function startServer() {
       if (mappedRole !== role) return res.status(403).json({ success: false, error: `Tu rol es ${mappedRole}, no ${role}` });
       if (thread.workflow_phase === "CLOSED") return res.status(400).json({ success: false, error: "Esta solicitud ya está cerrada" });
 
+      // P2 §4.5 / §8.2: at or after the deadline, timeout resolution wins and
+      // late confirmations must not be accepted. The cron job closes the thread
+      // with the corresponding unilateral outcome.
+      if (
+        thread.workflow_phase === "COMPLETION_PENDING" &&
+        thread.completionDeadline &&
+        thread.completionDeadline.getTime() <= Date.now()
+      ) {
+        return res.status(409).json({
+          success: false,
+          error: "La ventana de 72 horas expiró; la solicitud se cerrará automáticamente",
+        });
+      }
+
       const now = new Date();
       const deadline = new Date(now.getTime() + 72 * 60 * 60 * 1000);
       const updateData: any = { workflow_phase: "COMPLETION_PENDING", completionDeadline: deadline };
