@@ -1,5 +1,6 @@
 import { WorkflowPhase, ClosureOutcome } from "@prisma/client";
 import { prisma } from "../db";
+import { recalculateProviderTrustScore } from "../trust-score-service";
 
 export async function resolveExpiredQuotes() {
   const now = new Date();
@@ -51,6 +52,11 @@ export async function resolveExpiredQuotes() {
       data: { workflow_phase: WorkflowPhase.CLOSED, closure_outcome, completedAt: now, status: legacyStatus },
     });
     console.log(`[Cron] Closed thread ${thread.id} with outcome ${closure_outcome}`);
+
+    if (closure_outcome === ClosureOutcome.BILATERAL) {
+      recalculateProviderTrustScore(thread.providerId)
+        .catch((err) => console.error("[TrustScore] Cron recalc failed:", err));
+    }
     resolved++;
   }
 

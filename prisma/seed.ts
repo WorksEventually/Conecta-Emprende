@@ -9,6 +9,7 @@ import {
 } from "@prisma/client";
 
 const prisma = new PrismaClient();
+import { recalculateProviderTrustScore } from "../src/lib/trust-score-service";
 
 const PASSWORD = "Conecta123!";
 const now = new Date("2026-07-07T12:00:00.000Z");
@@ -559,7 +560,6 @@ async function main() {
             completedRequests: provider.completedRequests,
             requestsResponded: provider.completedRequests + 3,
             suspiciousActivityPenalty: provider.trust < 55 ? 25 : 0,
-            trustScore: provider.trust,
             calculatedAt: now,
           },
         },
@@ -573,36 +573,6 @@ async function main() {
             medalType,
             sourceEvent: "seed-data",
           })),
-        },
-        trustScore: {
-          create: {
-            scoreCompleteness: provider.trust >= 80 ? 100 : 75,
-            scoreTransactions: Math.min(provider.completedRequests * 5, 100),
-            scoreResponseTime: Math.max(20, 100 - provider.responseTimeHrs * 4),
-            scoreReviews: provider.trust,
-            scoreFormalization: provider.formalizationStatus === FormalizationStatus.MIPYME_FORMAL ? 100 : 50,
-            finalScore: provider.trust,
-            features: {
-              seeded: true,
-              completedRequests: provider.completedRequests,
-              responseTimeHrs: provider.responseTimeHrs,
-            },
-          },
-        },
-        trustScoreSnapshots: {
-          create: {
-            profileCompleteScore: provider.trust >= 80 ? 100 : 76,
-            contactVerifiedScore: provider.verified ? 100 : 60,
-            requestsRespondedScore: Math.min((provider.completedRequests + 3) * 5, 100),
-            requestsCompletedScore: Math.min(provider.completedRequests * 5, 100),
-            avgReviewScore: provider.trust,
-            responseTimeScore: Math.max(20, 100 - provider.responseTimeHrs * 4),
-            accountAgeFactor: 1,
-            suspiciousActivityPenalty: provider.trust < 55 ? 25 : 0,
-            finalScore: provider.trust,
-            algorithmVersion: "v1-seeded-normalized",
-            calculatedAt: now,
-          },
         },
         riskReports: provider.trust < 55 ? {
           create: {
@@ -785,6 +755,79 @@ async function main() {
       calculatedAt: new Date("2026-07-03T10:05:00.000Z"),
     },
   });
+
+  console.log("🔄 Generando trabajos bilaterales y reseñas realistas...");
+  const requesterPool = users.filter(u => u.id !== "seed_user_superadmin").map(u => u.id);
+
+  for (const provider of providerSeeds) {
+    const threadsToCreate = Math.min(provider.completedRequests, 10);
+    for (let i = 0; i < threadsToCreate; i++) {
+      const requesterId = requesterPool[i % requesterPool.length];
+      if (requesterId === provider.userId) continue;
+
+      const threadId = `seed_trust_thread_${provider.id}_${i}`;
+      const createdAt = new Date(now.getTime() - (40 - i) * 24 * 60 * 60 * 1000);
+      const completedAt = new Date(createdAt.getTime() + 3 * 24 * 60 * 60 * 1000);
+
+      await prisma.quoteThread.create({
+        data: {
+          id: threadId,
+          senderId: requesterId,
+          providerId: provider.id,
+          subject: `Solicitud de ${provider.category} #${i + 1}`,
+          clientName: users.find(u => u.id === requesterId)?.name ?? "Cliente seed",
+          clientAvatar: "SE",
+          dateLabel: "Completada",
+          status: "COMPLETED",
+          workflow_phase: "CLOSED",
+          closure_outcome: "BILATERAL",
+          moderation_state: "CLEAN",
+          confirmedByRequesterAt: completedAt,
+          confirmedByProviderAt: completedAt,
+          completedAt,
+          createdAt,
+          messages: {
+            create: [
+              { authorId: requesterId, authorRole: "client", body: `Hola, necesito una propuesta para: ${provider.category} #${i + 1}.`, createdAt },
+              { authorId: provider.userId, authorRole: "provider", body: "Gracias, puedo ayudarte. Confirmemos alcance y fechas.", createdAt: new Date(createdAt.getTime() + 60 * 60 * 1000) },
+            ],
+          },
+        },
+      });
+
+      if (Math.random() < 0.8) {
+        const base = provider.trust >= 80 ? 4 : provider.trust >= 60 ? 4 : 3;
+        const score = Math.min(5, Math.max(1, Math.round(base + Math.random())));
+        await prisma.review.create({
+          data: {
+            providerId: provider.id,
+            reviewerId: requesterId,
+            requestId: threadId,
+            qualityScore: score,
+            responseTimeScore: score,
+            fulfillmentScore: score,
+            communicationScore: score,
+            valueScore: score,
+            generalScore: score,
+            comment: "Review generada automáticamente a partir de trabajo bilateral seed.",
+            weight: 1.0,
+            createdAt: new Date(completedAt.getTime() + 60 * 60 * 1000),
+          },
+        });
+      }
+    }
+  }
+
+  console.log("🔄 Recalculando Trust Scores desde eventos reales...");
+  for (const provider of providerSeeds) {
+    try {
+      const result = await recalculateProviderTrustScore(provider.id);
+      console.log(`   ${provider.displayName}: public=${result.public_score ?? "INSUFICIENTE"} internal=${result.internal_score}`);
+    } catch (error) {
+      console.warn(`   ${provider.displayName}: error al recalcular:`, error);
+    }
+  }
+  console.log("✅ Trust Scores derivados de eventos reales");
 
   console.log("Seed data ready.");
   console.log("Try: requester@conecta.test, textil@conecta.test, cafe@conecta.test, equipos@conecta.test, admin@conecta.test, superadmin@conecta.test");

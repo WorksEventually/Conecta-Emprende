@@ -25,7 +25,9 @@ import {
   quoteMessageSchema,
   quoteUpdateSchema,
   quoteCompletionSchema,
+  quoteAcceptanceSchema,
   reviewCreateSchema,
+  reviewUpdateSchema,
   riskReportEscalateSchema,
   riskReportQuerySchema,
   riskReportStatusSchema,
@@ -49,6 +51,8 @@ import {
 import { prisma } from "./src/lib/db";
 import cron from "node-cron";
 import { resolveExpiredQuotes } from "./src/lib/cron/resolve-expired-quotes";
+import { recalculateProviderTrustScore } from "./src/lib/trust-score-service";
+import { checkReviewEligibility } from "./src/domain/requests/reviewRules";
 import {
   searchProviders,
   getFullProviderByIdOrSlug,
@@ -1021,7 +1025,7 @@ async function startServer() {
         return res.status(403).json({ success: false, error: "No participás en esta solicitud" });
       }
 
-      if ((quotedPriceLabel !== undefined || quotedDeliveryTime !== undefined || status === "QUOTE_SENT") && role !== "provider") {
+      if ((quotedPriceLabel !== undefined || quotedDeliveryTime !== undefined) && role !== "provider") {
         return res.status(403).json({ success: false, error: "Solo el proveedor puede enviar una cotización" });
       }
 
@@ -1031,10 +1035,6 @@ async function startServer() {
 
       if (confirmedByProviderAt && role !== "provider") {
         return res.status(403).json({ success: false, error: "Solo el proveedor puede confirmar esta parte" });
-      }
-
-      if (status === "QUOTE_ACCEPTED" && role !== "client") {
-        return res.status(403).json({ success: false, error: "Solo el solicitante puede aceptar la cotización" });
       }
 
       if (status === "CLOSED_PROVIDER" && role !== "provider") {
@@ -1052,6 +1052,25 @@ async function startServer() {
         confirmedByRequesterAt: Boolean(confirmedByRequesterAt),
         confirmedByProviderAt: Boolean(confirmedByProviderAt),
       });
+
+      // ✅ Auditoría: cada cotización enviada por el proveedor se agrega al historial (append-only)
+      if ((quotedPriceLabel !== undefined || quotedDeliveryTime !== undefined) && role === "provider") {
+        const currentHistory = (thread.quotationHistory as any[] | null) || [];
+        await prisma.quoteThread.update({
+          where: { id: threadId },
+          data: {
+            quotationHistory: [
+              ...currentHistory,
+              {
+                price: quotedPriceLabel ?? thread.quotedPriceLabel,
+                delivery: quotedDeliveryTime ?? thread.quotedDeliveryTime,
+                providerId: userId,
+                timestamp: new Date().toISOString(),
+              },
+            ],
+          },
+        });
+      }
 
       res.json({ success: true, data: updated });
     } catch (error) {
@@ -1078,6 +1097,20 @@ async function startServer() {
       if (mappedRole !== role) return res.status(403).json({ success: false, error: `Tu rol es ${mappedRole}, no ${role}` });
       if (thread.workflow_phase === "CLOSED") return res.status(400).json({ success: false, error: "Esta solicitud ya está cerrada" });
 
+      // P2 §4.5 / §8.2: at or after the deadline, timeout resolution wins and
+      // late confirmations must not be accepted. The cron job closes the thread
+      // with the corresponding unilateral outcome.
+      if (
+        thread.workflow_phase === "COMPLETION_PENDING" &&
+        thread.completionDeadline &&
+        thread.completionDeadline.getTime() <= Date.now()
+      ) {
+        return res.status(409).json({
+          success: false,
+          error: "La ventana de 72 horas expiró; la solicitud se cerrará automáticamente",
+        });
+      }
+
       const now = new Date();
       const deadline = new Date(now.getTime() + 72 * 60 * 60 * 1000);
       const updateData: any = { workflow_phase: "COMPLETION_PENDING", completionDeadline: deadline };
@@ -1095,16 +1128,66 @@ async function startServer() {
         updateData.completedAt = now;
       }
 
-      updateData.status = otherConfirmed ? "COMPLETED" : "QUOTE_ACCEPTED";
+      updateData.status = otherConfirmed ? "COMPLETED" : "IN_CONVERSATION";
 
       await prisma.quoteThread.update({ where: { id }, data: updateData });
       const message = otherConfirmed
         ? "¡Trabajo confirmado! Ambas partes confirmaron el cierre."
         : "Confirmación registrada. Se activó ventana de 72h para que la otra parte confirme.";
+
+      if (otherConfirmed) {
+        recalculateProviderTrustScore(thread.providerId)
+          .catch((err) => console.error("[TrustScore] Recalc failed:", err));
+      }
+
       res.json({ success: true, message });
     } catch (error) {
       console.error("Complete quote error:", error);
       res.status(500).json({ success: false, error: "Error al confirmar cierre" });
+    }
+  });
+
+  app.post("/api/quotes/:id/accept-quotation", authenticate, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { userId } = req.user;
+      const parsed = quoteAcceptanceSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ success: false, error: "Datos inválidos", details: parsed.error.issues });
+      }
+
+      const { thread, role } = await getThreadParticipantRole(id, userId);
+      if (!thread) return res.status(404).json({ success: false, error: "Solicitud no encontrada" });
+      if (!role) return res.status(403).json({ success: false, error: "No participás en esta solicitud" });
+
+      if (role !== "client") {
+        return res.status(403).json({ success: false, error: "Solo el cliente puede aceptar la cotización" });
+      }
+
+      if (thread.acceptedQuotation) {
+        return res.status(400).json({ success: false, error: "La cotización ya fue aceptada" });
+      }
+
+      if (!thread.quotedPriceLabel) {
+        return res.status(400).json({ success: false, error: "No hay cotización para aceptar" });
+      }
+
+      const acceptedQuotation = {
+        price: thread.quotedPriceLabel,
+        delivery: thread.quotedDeliveryTime,
+        acceptedAt: new Date().toISOString(),
+        acceptedBy: userId,
+      };
+
+      const updated = await prisma.quoteThread.update({
+        where: { id },
+        data: { acceptedQuotation },
+      });
+
+      res.json({ success: true, acceptedQuotation: updated.acceptedQuotation });
+    } catch (error) {
+      console.error("Accept quotation error:", error);
+      res.status(500).json({ success: false, error: "Error al aceptar cotización" });
     }
   });
 
@@ -1915,17 +1998,24 @@ async function startServer() {
         return res.status(404).json({ success: false, error: "Solicitud no encontrada para este proveedor" });
       }
 
-      if (request.status !== "COMPLETED" || !request.completedAt) {
-        return res.status(409).json({ success: false, error: "La reseña se habilita cuando la solicitud está completada por ambas partes" });
+      const eligibility = await checkReviewEligibility(requestId, userId);
+      if (!eligibility.eligible) {
+        const errorMessages: Record<string, string> = {
+          THREAD_NOT_FOUND: "Solicitud no encontrada",
+          ONLY_REQUESTER_CAN_REVIEW: "Solo el cliente puede reseñar",
+          SELF_REVIEW_NOT_ALLOWED: "No podés reseñar tu propio perfil",
+          THREAD_NOT_CLOSED: "La solicitud debe estar cerrada para reseñar",
+          ALREADY_REVIEWED: "Ya reseñaste esta solicitud",
+          OUTCOME_NOT_REVIEWABLE: "Este tipo de cierre no permite reseña",
+          NO_ENGAGEMENT_BEFORE_CANCELLATION: "No hubo suficiente interacción para reseñar",
+        };
+        const reason = (eligibility as { reason: string }).reason;
+        return res.status(409).json({
+          success: false,
+          error: errorMessages[reason] || "No podés reseñar esta solicitud",
+        });
       }
-
-      if (request.senderId !== userId) {
-        return res.status(403).json({ success: false, error: "Solo el solicitante puede reseñar esta solicitud" });
-      }
-
-      if (request.provider.userId === userId) {
-        return res.status(403).json({ success: false, error: "No podés reseñar tu propio perfil" });
-      }
+      const reviewWeight = eligibility.weight;
 
       const generalScore = (qualityScore + (responseTimeScore ?? qualityScore) + (fulfillmentScore ?? qualityScore) + (communicationScore ?? qualityScore) + (valueScore ?? qualityScore)) / 5;
 
@@ -1940,6 +2030,7 @@ async function startServer() {
           communicationScore: communicationScore ?? qualityScore,
           valueScore: valueScore ?? qualityScore,
           generalScore,
+          weight: reviewWeight,
           comment,
           analysis: {
             create: {
@@ -1973,10 +2064,71 @@ async function startServer() {
         },
       });
 
+      await recalculateProviderTrustScore(providerId);
+
       res.status(201).json({ success: true, data: review });
     } catch (error) {
       console.error("Create review error:", error);
       res.status(500).json({ success: false, error: "Error al crear reseña" });
+    }
+  });
+
+  app.patch("/api/reviews/:id", authenticate, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { userId } = req.user;
+      const parsed = reviewUpdateSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ success: false, error: "Los datos de la reseña son inválidos", details: parsed.error.issues });
+
+      const review = await prisma.review.findUnique({ where: { id } });
+      if (!review) return res.status(404).json({ success: false, error: "Reseña no encontrada" });
+
+      if (review.reviewerId !== userId) {
+        return res.status(403).json({ success: false, error: "Solo el autor puede editar esta reseña" });
+      }
+
+      const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+      if (Date.now() - review.createdAt.getTime() > SEVEN_DAYS_MS) {
+        return res.status(400).json({ success: false, error: "La reseña solo puede editarse durante los primeros 7 días" });
+      }
+
+      await prisma.reviewHistory.create({
+        data: {
+          reviewId: review.id,
+          qualityScore: review.qualityScore,
+          responseTimeScore: review.responseTimeScore,
+          fulfillmentScore: review.fulfillmentScore,
+          communicationScore: review.communicationScore,
+          valueScore: review.valueScore,
+          generalScore: review.generalScore,
+          comment: review.comment,
+          editedByUserId: userId,
+          editedAt: new Date(),
+        },
+      });
+
+      const merged = {
+        qualityScore: parsed.data.qualityScore ?? review.qualityScore,
+        responseTimeScore: parsed.data.responseTimeScore ?? review.responseTimeScore,
+        fulfillmentScore: parsed.data.fulfillmentScore ?? review.fulfillmentScore,
+        communicationScore: parsed.data.communicationScore ?? review.communicationScore,
+        valueScore: parsed.data.valueScore ?? review.valueScore,
+        comment: parsed.data.comment ?? review.comment,
+      };
+      const generalScore = (merged.qualityScore + merged.responseTimeScore + merged.fulfillmentScore + merged.communicationScore + merged.valueScore) / 5;
+
+      const updated = await prisma.review.update({
+        where: { id: review.id },
+        data: { ...merged, generalScore, editedAt: new Date() },
+        include: { reviewer: { select: { id: true, name: true, image: true } }, analysis: true },
+      });
+
+      await recalculateProviderTrustScore(review.providerId);
+
+      res.json({ success: true, data: updated });
+    } catch (error) {
+      console.error("Update review error:", error);
+      res.status(500).json({ success: false, error: "Error al editar reseña" });
     }
   });
 

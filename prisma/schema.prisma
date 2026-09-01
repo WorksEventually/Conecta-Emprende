@@ -396,6 +396,9 @@ model ProviderMetrics {
   requestsResponded         Int      @default(0)
   suspiciousActivityPenalty Float    @default(0)
   trustScore                Float    @default(0)
+  bilateralCompletions      Int      @default(0)
+  uniqueRequesters          Int      @default(0)
+  lastRecalculatedAt        DateTime?
   calculatedAt              DateTime @default(now())
   updatedAt                 DateTime @updatedAt
 
@@ -422,12 +425,34 @@ model Review {
   comment   String?         @db.Text
   sentiment Float?
   analysis  ReviewAnalysis?
+  history   ReviewHistory[]
+  weight    Float           @default(1.0)
+  editedAt  DateTime?
   createdAt DateTime        @default(now())
 
   @@unique([requestId, providerId, reviewerId])
   @@index([providerId])
   @@index([reviewerId])
   @@index([requestId])
+  @@index([weight])
+}
+
+model ReviewHistory {
+  id         String @id @default(cuid())
+  reviewId   String
+  review     Review @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+
+  qualityScore       Int
+  responseTimeScore  Int
+  fulfillmentScore   Int
+  communicationScore Int
+  valueScore         Int
+  generalScore       Float
+  comment            String? @db.Text
+  editedAt           DateTime @default(now())
+  editedByUserId     String
+
+  @@index([reviewId])
 }
 
 model ReviewAnalysis {
@@ -625,7 +650,7 @@ model QuoteThread {
   clientAvatar String? // avatar abbreviation
   dateLabel    String? // "Ayer", "Hace 1 semana" - calculado en app
 
-  status String @default("OPEN") // OPEN | IN_CONVERSATION | QUOTE_SENT | QUOTE_ACCEPTED | COMPLETED | CLOSED_REQUESTER | CLOSED_PROVIDER | CANCELLED
+  status String @default("OPEN") // OPEN | IN_CONVERSATION | COMPLETED | CLOSED_REQUESTER | CLOSED_PROVIDER | CANCELLED
   // ⚠️ DEPRECADO — mantener temporalmente para compatibilidad durante migración.
   // Usar workflow_phase/closure_outcome en su lugar.
 
@@ -641,6 +666,12 @@ model QuoteThread {
   // Quote fields
   quotedPriceLabel       String?
   quotedDeliveryTime     String?
+
+  // Historial de cotizaciones (auditoría completa, no sobrescribir)
+  quotationHistory   Json? @default("[]") // JSON array: [{price, delivery, providerId, timestamp}]
+  // Evento de aceptación de precio por el cliente (traza de acuerdo)
+  acceptedQuotation  Json? // {price, delivery, acceptedAt, acceptedBy} | null
+
   confirmedByRequesterAt DateTime?
   confirmedByProviderAt  DateTime?
   completedAt            DateTime?
@@ -735,7 +766,8 @@ enum ClosureOutcome {
   REQUESTER_CONFIRMED_PROVIDER_NO_RESPONSE // Cliente confirmó, proveedor timeout
   PROVIDER_CLAIMED_REQUESTER_NO_RESPONSE // Proveedor confirmó, cliente timeout
   CANCELLED_BY_REQUESTER // Cliente canceló explícitamente
-  CANCELLED_BY_PROVIDER // Proveedor canceló explícitamente
+  CANCELLED_BY_PROVIDER // Proveedor canceló explícitamente sin interacción previa
+  CANCELLED_BY_PROVIDER_AFTER_ENGAGEMENT // Proveedor canceló tras interacción (habilita reseña peso 0.5)
   MODERATION_CLOSURE // Cerrado por acción de moderación
 }
 

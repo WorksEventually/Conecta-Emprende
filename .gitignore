@@ -10,4 +10,5 @@ pitch-video/
 
 # Herramientas locales del agente (opencode)
 .agents/
+.opencode/
 skills-lock.json

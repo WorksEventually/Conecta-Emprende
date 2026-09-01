@@ -23,6 +23,18 @@ export interface QuoteThread {
   completionDeadline?: string | null;
   quotedPriceLabel: string | null;
   quotedDeliveryTime: string | null;
+  quotationHistory?: Array<{
+    price?: string | null;
+    delivery?: string | null;
+    providerId?: string;
+    timestamp?: string;
+  }>;
+  acceptedQuotation?: {
+    price?: string | null;
+    delivery?: string | null;
+    acceptedAt: string;
+    acceptedBy: string;
+  } | null;
   confirmedByRequesterAt: string | null;
   confirmedByProviderAt: string | null;
   completedAt: string | null;

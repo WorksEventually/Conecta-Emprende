@@ -5,13 +5,12 @@ import { CREATIVE_CITIES, priceLabel, type PriceRange } from "../lib/mvp-data";
 import { useAuthStore } from "../stores/auth-store";
 import { useProvidersStore } from "../stores/providers-store";
 import { useQuotesStore } from "../stores/quotes-store";
+import { ratingApi } from "../api/ratingApi";
 import { EmptyState, PageHeader, RequestStatusBadge } from "../components/mvp/Ui";
 
 const statusLabel: Record<string, string> = {
   OPEN: "Abierta",
   IN_CONVERSATION: "En conversación",
-  QUOTE_SENT: "Cotización enviada",
-  QUOTE_ACCEPTED: "Cotización aceptada",
   COMPLETED: "Completada",
   CLOSED_REQUESTER: "Cerrada por cliente",
   CLOSED_PROVIDER: "Cerrada por proveedor",
@@ -19,8 +18,8 @@ const statusLabel: Record<string, string> = {
 };
 
 const tabs = [
-  { label: "Activas", statuses: ["OPEN", "IN_CONVERSATION", "QUOTE_SENT", "QUOTE_ACCEPTED"] },
-  { label: "No leídas", statuses: ["OPEN", "IN_CONVERSATION", "QUOTE_SENT", "QUOTE_ACCEPTED"] },
+  { label: "Activas", statuses: ["OPEN", "IN_CONVERSATION"] },
+  { label: "No leídas", statuses: ["OPEN", "IN_CONVERSATION"] },
   { label: "Completadas", statuses: ["COMPLETED"] },
   { label: "Cerradas", statuses: ["CLOSED_PROVIDER", "CLOSED_REQUESTER", "CANCELLED"] },
 ];
@@ -246,6 +245,12 @@ export function RequestDetailPage() {
   const [score, setScore] = useState(5);
   const [review, setReview] = useState("");
   const [isReviewing, setIsReviewing] = useState(false);
+  const [myReview, setMyReview] = useState<{ id: string; score: number; comment: string | null; createdAt: string } | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editScore, setEditScore] = useState(5);
+  const [editComment, setEditComment] = useState("");
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const [editError, setEditError] = useState("");
 
   const thread = currentThread;
   const provider = currentProvider?.provider;
@@ -261,6 +266,17 @@ export function RequestDetailPage() {
       getProvider(thread.providerId);
     }
   }, [thread?.providerId, getProvider]);
+
+  useEffect(() => {
+    if (thread?.providerId && user?.id) {
+      ratingApi.getVerifiedReviews(thread.providerId)
+        .then(reviews => {
+          const mine = reviews.find(r => r.requestId === thread.id && r.reviewerId === user.id);
+          if (mine) setMyReview({ id: mine.id, score: mine.qualityScore, comment: mine.comment, createdAt: mine.createdAt });
+        })
+        .catch(() => {});
+    }
+  }, [thread?.providerId, thread?.id, user?.id]);
 
   const providerIdForUser = user?.providers?.[0]?.id || user?.providerProfileId;
   const isRequester = !!user && thread?.senderId === user.id;
@@ -322,6 +338,31 @@ export function RequestDetailPage() {
     }
   };
 
+  const handleEditReview = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!myReview) return;
+    setIsSavingEdit(true);
+    setEditError("");
+    try {
+      await ratingApi.updateReview(myReview.id, {
+        qualityScore: editScore,
+        responseTimeScore: editScore,
+        fulfillmentScore: editScore,
+        communicationScore: editScore,
+        valueScore: editScore,
+        comment: editComment,
+      });
+      setMyReview({ id: myReview.id, score: editScore, comment: editComment, createdAt: myReview.createdAt });
+      setIsEditing(false);
+    } catch (e) {
+      setEditError(e instanceof Error ? e.message : "Error al editar reseña");
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
+
+  const canEditReview = !!myReview && Date.now() - new Date(myReview.createdAt).getTime() <= 7 * 24 * 60 * 60 * 1000;
+
   if (!requestId) {
     return (
       <EmptyState title="Solicitud no encontrada">
@@ -378,28 +419,71 @@ export function RequestDetailPage() {
           {thread.status === "COMPLETED" && (
             <section className="content-section">
               <h2>Reseña del trabajo</h2>
-              <p className="success-note">
-                <CheckCircle2 /> El trabajo fue completado. Podés dejar una reseña.
-              </p>
-              <form onSubmit={handleAddReview}>
-                <div className="rating">
-                  {[1, 2, 3, 4, 5].map(value => (
-                    <button type="button" className={value <= score ? "active" : ""} onClick={() => setScore(value)} key={value}>
-                      <Star />
-                    </button>
-                  ))}
-                </div>
-                <textarea
-                  required
-                  minLength={10}
-                  value={review}
-                  onChange={event => setReview(event.target.value)}
-                  placeholder="¿Cómo fue trabajar con este proveedor?"
-                />
-                <button className="button primary" disabled={isReviewing}>
-                  {isReviewing ? "Publicando..." : "Publicar reseña"}
-                </button>
-              </form>
+              {myReview ? (
+                isEditing ? (
+                  <form onSubmit={handleEditReview}>
+                    <div className="rating">
+                      {[1, 2, 3, 4, 5].map(value => (
+                        <button type="button" className={value <= editScore ? "active" : ""} onClick={() => setEditScore(value)} key={value}>
+                          <Star />
+                        </button>
+                      ))}
+                    </div>
+                    <textarea
+                      required
+                      minLength={10}
+                      value={editComment}
+                      onChange={event => setEditComment(event.target.value)}
+                      placeholder="¿Cómo fue trabajar con este proveedor?"
+                    />
+                    {editError && <p className="form-error">{editError}</p>}
+                    <div className="stack-actions">
+                      <button className="button primary" disabled={isSavingEdit}>
+                        {isSavingEdit ? "Guardando..." : "Guardar cambios"}
+                      </button>
+                      <button type="button" className="button secondary" onClick={() => setIsEditing(false)}>
+                        Cancelar
+                      </button>
+                    </div>
+                  </form>
+                ) : (
+                  <>
+                    <p className="success-note">
+                      <CheckCircle2 /> Ya dejaste una reseña ({myReview.score} ★)
+                      {!canEditReview && <span className="text-gray-400"> · La ventana de edición (7 días) ya cerró</span>}
+                    </p>
+                    {myReview.comment && <p>{myReview.comment}</p>}
+                    {canEditReview && (
+                      <button className="button secondary" onClick={() => { setEditScore(myReview.score); setEditComment(myReview.comment ?? ""); setIsEditing(true); }}>
+                        <Star /> Editar reseña
+                      </button>
+                    )}
+                  </>
+                )
+              ) : (
+                <form onSubmit={handleAddReview}>
+                  <p className="success-note">
+                    <CheckCircle2 /> El trabajo fue completado. Podés dejar una reseña.
+                  </p>
+                  <div className="rating">
+                    {[1, 2, 3, 4, 5].map(value => (
+                      <button type="button" className={value <= score ? "active" : ""} onClick={() => setScore(value)} key={value}>
+                        <Star />
+                      </button>
+                    ))}
+                  </div>
+                  <textarea
+                    required
+                    minLength={10}
+                    value={review}
+                    onChange={event => setReview(event.target.value)}
+                    placeholder="¿Cómo fue trabajar con este proveedor?"
+                  />
+                  <button className="button primary" disabled={isReviewing}>
+                    {isReviewing ? "Publicando..." : "Publicar reseña"}
+                  </button>
+                </form>
+              )}
             </section>
           )}
         </main>
@@ -421,7 +505,7 @@ export function RequestDetailPage() {
                   Respuesta entre las partes
                 </span>
               </div>
-              <div className={["QUOTE_SENT", "QUOTE_ACCEPTED", "COMPLETED"].includes(thread.status) ? "done" : ""}>
+              <div className={["COMPLETED"].includes(thread.status) ? "done" : ""}>
                 <Circle />
                 <span>
                   <strong>Cotización</strong>
