@@ -1,5 +1,6 @@
 import type { WorkflowPhase, ClosureOutcome, ModerationState } from "@prisma/client";
 import { prisma } from "./db";
+import { analyzeProviderRisk } from "./risk-telemetry-service";
 
 export function getLegacyDisplayStatus(
   workflow_phase: WorkflowPhase | string,
@@ -286,6 +287,9 @@ export async function updateThread(threadId: string, data: {
       where: { id: threadId },
       data: { status: "COMPLETED", completedAt: new Date() },
     });
+
+    analyzeProviderRisk(thread.providerId)
+      .catch((err) => console.error("[RiskTelemetry] Analysis failed:", err));
   }
 
   return thread;

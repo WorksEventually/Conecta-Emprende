@@ -1,5 +1,6 @@
 import { prisma } from "./db";
 import type { RiskScoreInput } from "../domain/risk/calculateRiskScore";
+import { calculateRiskScore } from "../domain/risk/calculateRiskScore";
 
 export async function extractProviderMetrics(providerId: string): Promise<RiskScoreInput> {
   const threads = await prisma.quoteThread.findMany({
@@ -130,4 +131,58 @@ function calculateRatingConcentration(reviews: any[]): number {
   const concentrationPercentage = (reviewsFromNewAccounts.length / reviews.length) * 100;
 
   return Math.min(concentrationPercentage, 100);
+}
+
+export async function analyzeProviderRisk(providerId: string): Promise<void> {
+  const metrics = await extractProviderMetrics(providerId);
+  
+  const riskResult = calculateRiskScore(metrics);
+  
+  if (!riskResult.shouldGenerateReport) {
+    return;
+  }
+
+  const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+  const existingReport = await prisma.riskReport.findFirst({
+    where: {
+      providerId,
+      status: "OPEN",
+      generatedAt: {
+        gte: twentyFourHoursAgo,
+      },
+    },
+    orderBy: {
+      generatedAt: "desc",
+    },
+  });
+
+  if (existingReport) {
+    await prisma.riskReport.update({
+      where: { id: existingReport.id },
+      data: {
+        riskScore: riskResult.score,
+        avgSearchTimeSeconds: metrics.avgSearchTimeSeconds,
+        avgRequestToCompletionMinutes: metrics.avgRequestToCompletionMinutes,
+        avgMessagesPerRequest: metrics.avgMessagesPerRequest,
+        newAccountsPercentage: metrics.newAccountsPercentage,
+        ratingConcentrationScore: metrics.ratingConcentrationScore,
+        recommendedAction: riskResult.recommendedAction,
+      },
+    });
+  } else {
+    await prisma.riskReport.create({
+      data: {
+        providerId,
+        riskScore: riskResult.score,
+        avgSearchTimeSeconds: metrics.avgSearchTimeSeconds,
+        avgRequestToCompletionMinutes: metrics.avgRequestToCompletionMinutes,
+        avgMessagesPerRequest: metrics.avgMessagesPerRequest,
+        newAccountsPercentage: metrics.newAccountsPercentage,
+        ratingConcentrationScore: metrics.ratingConcentrationScore,
+        status: "OPEN",
+        recommendedAction: riskResult.recommendedAction,
+      },
+    });
+  }
 }

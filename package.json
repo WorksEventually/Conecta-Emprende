@@ -14,7 +14,8 @@
     "test:admin-permissions": "tsx scripts/test_admin_permissions.ts",
     "test:trust-v2": "tsx scripts/test_trust_score_v2.ts",
     "test:sprint-e2e": "tsx scripts/test_sprint2_trust_v2_e2e.ts",
-    "test:risk-telemetry": "tsx scripts/test_risk_telemetry.ts"
+    "test:risk-telemetry": "tsx scripts/test_risk_telemetry.ts",
+    "test:risk-integration": "tsx scripts/test_risk_integration_e2e.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
