@@ -14,6 +14,7 @@
  */
 import assert from "node:assert/strict";
 import { PrismaClient } from "@prisma/client";
+import bcrypt from "bcryptjs";
 
 const BASE_URL = process.env.API_URL ?? "http://localhost:3000";
 const SEED_PASSWORD = "Conecta123!";
@@ -110,6 +111,24 @@ async function main() {
 
   check("Requester + Provider login", Boolean(requester.cookie && provider.cookie));
 
+  // Clean up temporary user if it exists from previous failed run
+  await prisma.quoteThread.deleteMany({ 
+    where: { sender: { email: "newaccount@risk-test.temp" } } 
+  });
+  await prisma.user.deleteMany({ 
+    where: { email: "newaccount@risk-test.temp" } 
+  });
+
+  // Create temporary new user for Test 2 (account created today, <30 days old)
+  const newUser = await prisma.user.create({
+    data: {
+      email: "newaccount@risk-test.temp",
+      name: "New Account Test",
+      password: await bcrypt.hash(SEED_PASSWORD, 10),
+      createdAt: new Date(), // Fresh account (<30 days)
+    },
+  });
+
   // Deterministic start: the seeded provider already exhibits an anomalous
   // aggregate (fabricated fast completions, new accounts, single requester),
   // which generates a RiskReport on its own. Clean the provider state so
@@ -181,9 +200,12 @@ async function main() {
   await prisma.riskReport.deleteMany({ where: { providerId } });
 
   for (let i = 0; i < 5; i++) {
+    // Use newUser for 4 out of 5 threads (80% new accounts)
+    const senderToUse = i < 4 ? newUser.id : requester.userId;
+    
     const thread = await prisma.quoteThread.create({
       data: {
-        senderId: requester.userId,
+        senderId: senderToUse,
         providerId,
         subject: `Thread sospechoso ${i}`,
         status: "COMPLETED",
@@ -199,7 +221,7 @@ async function main() {
     await prisma.quoteMessage.create({
       data: {
         threadId: thread.id,
-        authorId: requester.userId,
+        authorId: senderToUse,
         authorRole: "client",
         body: "Solo un mensaje",
       },
@@ -231,6 +253,14 @@ async function main() {
   console.log("\n--- Resumen ---");
   console.log(`✅ Tests pasados: ${passed}`);
   console.log(`❌ Tests fallados: ${failed}`);
+
+  // Cleanup: remove temporary test user and related data
+  await prisma.quoteThread.deleteMany({ 
+    where: { senderId: newUser.id } 
+  });
+  await prisma.user.deleteMany({ 
+    where: { email: "newaccount@risk-test.temp" } 
+  });
 
   if (failed > 0) {
     process.exit(1);
