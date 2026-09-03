@@ -44,8 +44,9 @@ assert.equal(suspiciousProvider.shouldGenerateReport, true, "T2: Debe generar re
 console.log(`✓ Test 2: Proveedor sospechoso → score=${suspiciousProvider.score}, level=${suspiciousProvider.level}`);
 
 // Test 3: Proveedor sin datos (valores en 0)
-// Nota: Los valores 0 activan algunas banderas (< 2 mensajes, < 15 min completion)
-// pero esto es correcto porque 0 indica ausencia de datos para validar
+// Nota: con el contrato actual, `0` es un valor real (p.ej. 0 mensajes), no
+// "sin datos": activa banderas (<2 mensajes, <15 min). La ausencia de datos
+// se representa con `null` (ver Test 9).
 const newProvider = calculateRiskScore({
   avgSearchTimeSeconds: 0,
   avgRequestToCompletionMinutes: 0,
@@ -125,4 +126,22 @@ if (thresholdProvider.score >= 70) {
   console.log(`✓ Test 8: Score=${thresholdProvider.score} <70 → no genera reporte`);
 }
 
-console.log("\n✅ Todos los tests de Risk Telemetry pasaron (8 casos)");
+// Test 9: Señales no disponibles (null) no puntúan como sospechosas.
+// La telemetría de búsqueda aún no existe y un proveedor sin actividad no
+// tiene datos: null = desconocido, ni "búsqueda instantánea" ni
+// "conversación mínima". Este caso regresiona el falso positivo (+20)
+// que generaba RiskReports contra datos legítimos.
+const unavailableSignals = calculateRiskScore({
+  avgSearchTimeSeconds: null,
+  avgRequestToCompletionMinutes: null,
+  avgMessagesPerRequest: null,
+  newAccountsPercentage: null,
+  repeatedTargetProviderScore: null,
+  ratingConcentrationScore: null,
+});
+assert.equal(unavailableSignals.score, 0, "T9: null (sin datos) no debe sumar puntos");
+assert.equal(unavailableSignals.level, "normal", "T9: Nivel debe ser 'normal'");
+assert.equal(unavailableSignals.shouldGenerateReport, false, "T9: No debe generar reporte");
+console.log(`✓ Test 9: Señales no disponibles (null) → score=${unavailableSignals.score}`);
+
+console.log("\n✅ Todos los tests de Risk Telemetry pasaron (9 casos)");

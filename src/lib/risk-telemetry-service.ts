@@ -29,13 +29,16 @@ export async function extractProviderMetrics(providerId: string): Promise<RiskSc
   });
 
   if (threads.length === 0) {
+    // No activity yet: signals are unknown, not suspicious. Returning zeros
+    // here made every new provider score as "ultra-fast completion + minimal
+    // conversation".
     return {
-      avgSearchTimeSeconds: 0,
-      avgRequestToCompletionMinutes: 0,
-      avgMessagesPerRequest: 0,
-      newAccountsPercentage: 0,
-      repeatedTargetProviderScore: 0,
-      ratingConcentrationScore: 0,
+      avgSearchTimeSeconds: null,
+      avgRequestToCompletionMinutes: null,
+      avgMessagesPerRequest: null,
+      newAccountsPercentage: null,
+      repeatedTargetProviderScore: null,
+      ratingConcentrationScore: null,
     };
   }
 
@@ -46,7 +49,9 @@ export async function extractProviderMetrics(providerId: string): Promise<RiskSc
   const ratingConcentrationScore = calculateRatingConcentration(reviews);
 
   return {
-    avgSearchTimeSeconds: 0,
+    // Search telemetry does not exist yet (no SearchEvent model); report it
+    // as unknown instead of an instant search (which added +20 to everyone).
+    avgSearchTimeSeconds: null,
     avgRequestToCompletionMinutes,
     avgMessagesPerRequest,
     newAccountsPercentage,
@@ -60,7 +65,9 @@ function calculateAvgCompletionTime(threads: any[]): number {
     (t) => t.closure_outcome === "BILATERAL" && t.completedAt
   );
 
-  if (bilateralThreads.length === 0) return 0;
+  // Unknown until the provider has at least one bilateral completion;
+  // 0 would be read as an ultra-fast completion (+20).
+  if (bilateralThreads.length === 0) return null;
 
   const totalMinutes = bilateralThreads.reduce((sum, thread) => {
     const start = new Date(thread.createdAt).getTime();
@@ -75,7 +82,9 @@ function calculateAvgCompletionTime(threads: any[]): number {
 function calculateAvgMessages(threads: any[]): number {
   const threadsWithMessages = threads.filter((t) => t.messages.length > 0);
 
-  if (threadsWithMessages.length === 0) return 0;
+  // Unknown when no thread has messages; 0 would be read as minimal
+  // conversation (+15).
+  if (threadsWithMessages.length === 0) return null;
 
   const totalMessages = threadsWithMessages.reduce(
     (sum, thread) => sum + thread.messages.length,
@@ -117,7 +126,8 @@ function calculateRepeatedTargetScore(threads: any[]): number {
 }
 
 function calculateRatingConcentration(reviews: any[]): number {
-  if (reviews.length === 0) return 0;
+  // No reviews yet → no concentration evidence.
+  if (reviews.length === 0) return null;
 
   const now = Date.now();
   const thirtyDaysAgo = now - 30 * 24 * 60 * 60 * 1000;
