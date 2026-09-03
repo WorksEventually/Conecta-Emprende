@@ -71,7 +71,23 @@ npm run test:risk-integration    # Risk Integration (e2e)
 
 ## ⚙️ Requisitos
 
-### 1. Base de datos PostgreSQL
+### 1. Servidor corriendo (E2E y Smoke tests)
+**IMPORTANTE:** Los tests E2E y smoke requieren que el servidor esté corriendo en `http://localhost:3000`.
+
+```bash
+# En una terminal separada, levantar el servidor:
+npm run dev
+
+# En otra terminal, ejecutar tests:
+npm test
+```
+
+**Tests unitarios** (Trust Score v2, Risk Telemetry) NO requieren servidor:
+```bash
+npm run test:unit  # Se ejecutan sin servidor
+```
+
+### 2. Base de datos PostgreSQL
 Todas las suites requieren una base de datos PostgreSQL limpia:
 
 ```bash
@@ -85,7 +101,7 @@ npx prisma migrate deploy
 npm run db:seed
 ```
 
-### 2. Variables de entorno
+### 3. Variables de entorno
 El archivo `.env` debe contener:
 
 ```env
@@ -95,8 +111,8 @@ GEMINI_API_KEY="your-gemini-key"  # Opcional para tests
 NODE_ENV="test"
 ```
 
-### 3. Puerto disponible
-Los tests E2E levantan un servidor en `http://localhost:5959`. Asegúrate de que el puerto esté libre.
+### 4. Puerto 3000 disponible
+El servidor debe correr en `http://localhost:3000` para que los tests E2E se conecten.
 
 ---
 
