@@ -52,6 +52,7 @@ import { prisma } from "./src/lib/db";
 import cron from "node-cron";
 import { resolveExpiredQuotes } from "./src/lib/cron/resolve-expired-quotes";
 import { recalculateProviderTrustScore } from "./src/lib/trust-score-service";
+import { analyzeProviderRisk } from "./src/lib/risk-telemetry-service";
 import { checkReviewEligibility } from "./src/domain/requests/reviewRules";
 import {
   searchProviders,
@@ -1138,6 +1139,9 @@ async function startServer() {
       if (otherConfirmed) {
         recalculateProviderTrustScore(thread.providerId)
           .catch((err) => console.error("[TrustScore] Recalc failed:", err));
+        
+        analyzeProviderRisk(thread.providerId)
+          .catch((err) => console.error("[RiskTelemetry] Analysis failed:", err));
       }
 
       res.json({ success: true, message });

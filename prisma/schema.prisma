@@ -518,6 +518,7 @@ model RiskReport {
   @@index([reviewedByUserId])
   @@index([escalatedByUserId])
   @@index([resolvedByUserId])
+  @@index([providerId, status, generatedAt])
 }
 
 model ModerationAuditLog {

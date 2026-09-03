@@ -1,6 +1,7 @@
 import { WorkflowPhase, ClosureOutcome } from "@prisma/client";
 import { prisma } from "../db";
 import { recalculateProviderTrustScore } from "../trust-score-service";
+import { analyzeProviderRisk } from "../risk-telemetry-service";
 
 export async function resolveExpiredQuotes() {
   const now = new Date();
@@ -56,6 +57,9 @@ export async function resolveExpiredQuotes() {
     if (closure_outcome === ClosureOutcome.BILATERAL) {
       recalculateProviderTrustScore(thread.providerId)
         .catch((err) => console.error("[TrustScore] Cron recalc failed:", err));
+      
+      analyzeProviderRisk(thread.providerId)
+        .catch((err) => console.error("[RiskTelemetry] Cron analysis failed:", err));
     }
     resolved++;
   }
