@@ -110,6 +110,16 @@ async function main() {
 
   check("Requester + Provider login", Boolean(requester.cookie && provider.cookie));
 
+  // Deterministic start: the seeded provider already exhibits an anomalous
+  // aggregate (fabricated fast completions, new accounts, single requester),
+  // which generates a RiskReport on its own. Clean the provider state so
+  // Test 1 validates the normal path in isolation (Test 2 recreates its own
+  // suspicious data afterwards). Review.requestId is SetNull on thread delete,
+  // and seed reviews are removed to reset the rating concentration signal.
+  await prisma.quoteThread.deleteMany({ where: { providerId } });
+  await prisma.review.deleteMany({ where: { providerId } });
+  await prisma.riskReport.deleteMany({ where: { providerId } });
+
   console.log("\n--- Test 1: Thread normal no genera RiskReport ---");
   
   const normalThread = await prisma.quoteThread.create({
