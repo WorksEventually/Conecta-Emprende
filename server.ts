@@ -86,6 +86,10 @@ function normalizeAvailability(value: unknown): Availability {
   return Object.values(Availability).includes(value as Availability) ? value as Availability : Availability.DISPONIBLE;
 }
 
+/**
+ * @deprecated Decision D-17: formalizationStatus is a RESERVED field.
+ * This function remains for seed compatibility but has no MVP effect.
+ */
 function normalizeFormalizationStatus(value: unknown): FormalizationStatus {
   return Object.values(FormalizationStatus).includes(value as FormalizationStatus) ? value as FormalizationStatus : FormalizationStatus.INFORMAL;
 }
@@ -1899,75 +1903,24 @@ async function startServer() {
     }
   });
 
-  // GET Formalization Checklist
+  // GET Formalization Checklist [DEPRECATED - D-17]
   app.get("/api/providers/:id/formalization", async (req, res) => {
-    try {
-      const checklist = await prisma.formalizationChecklist.findUnique({
-        where: { providerId: req.params.id },
-      });
-      res.json({ success: true, data: { steps: checklist?.steps || [] } });
-    } catch (error) {
-      console.error("Get formalization error:", error);
-      res.status(500).json({ success: false, error: "Error al obtener checklist" });
-    }
+    res.status(501).json({
+      success: false,
+      error: "FEATURE_NOT_IN_MVP",
+      message: "Formalización legal no forma parte del MVP activo (Decisión D-17). Ver /formalization para roadmap futuro.",
+      roadmap: "/formalization"
+    });
   });
 
-  // PUT Formalization Checklist
+  // PUT Formalization Checklist [DEPRECATED - D-17]
   app.put("/api/providers/:id/formalization", authenticate, async (req, res) => {
-    try {
-      const parsed = formalizationUpdateSchema.safeParse(req.body);
-      if (!parsed.success) {
-        return res.status(400).json({ success: false, error: "Datos inválidos", details: parsed.error.issues });
-      }
-
-      const { stepId, status } = parsed.data;
-      const providerId = req.params.id;
-
-      // Get existing checklist
-      let checklist = await prisma.formalizationChecklist.findUnique({
-        where: { providerId },
-      });
-
-      if (!checklist) {
-        return res.status(404).json({ success: false, error: "Checklist no encontrado" });
-      }
-
-      // Update the step in the JSON array
-      const steps = checklist.steps as Array<{ id: string; title: string; description: string; status: string }>;
-      let stepFound = false;
-      let nextCurrentIndex = -1;
-
-      for (let i = 0; i < steps.length; i++) {
-        if (steps[i].id === stepId) {
-          steps[i].status = status;
-          stepFound = true;
-          if (status === "completed") {
-            nextCurrentIndex = i + 1;
-          }
-        }
-      }
-
-      if (!stepFound) {
-        return res.status(404).json({ success: false, error: "Step no encontrado" });
-      }
-
-      // Auto-advance next pending step to current
-      if (nextCurrentIndex !== -1 && nextCurrentIndex < steps.length) {
-        if (steps[nextCurrentIndex].status === "pending") {
-          steps[nextCurrentIndex].status = "current";
-        }
-      }
-
-      const updated = await prisma.formalizationChecklist.update({
-        where: { providerId },
-        data: { steps },
-      });
-
-      res.json({ success: true, message: "Estado de formalización actualizado", data: { steps: updated.steps } });
-    } catch (error) {
-      console.error("Update formalization error:", error);
-      res.status(500).json({ success: false, error: "Error al actualizar formalización" });
-    }
+    res.status(501).json({
+      success: false,
+      error: "FEATURE_NOT_IN_MVP",
+      message: "Formalización legal no forma parte del MVP activo (Decisión D-17). Ver /formalization para roadmap futuro.",
+      roadmap: "/formalization"
+    });
   });
 
   // GET Reviews by Provider

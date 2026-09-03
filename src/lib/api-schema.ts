@@ -28,6 +28,11 @@ export const aiSearchProviderSchema = z.object({
   query: z.string().min(2, "La consulta debe tener al menos 2 caracteres"),
 });
 
+/**
+ * @deprecated Decision D-17: Legal formalization is outside MVP scope.
+ * This schema is preserved for API compatibility but the endpoints return 501.
+ * See constraints.md for details.
+ */
 export const formalizationUpdateSchema = z.object({
   providerId: z.string(),
   stepId: z.string(),
