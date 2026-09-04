@@ -1535,6 +1535,40 @@ async function startServer() {
     }
   });
 
+  app.get("/api/admin/threads/:id/events", authenticate, requireAdminReviewerOrSuperAdmin, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const eventType = req.query.eventType as string | undefined;
+
+      const thread = await prisma.quoteThread.findUnique({
+        where: { id },
+        select: { id: true },
+      });
+
+      if (!thread) {
+        return res.status(404).json({ success: false, error: "Thread no encontrado" });
+      }
+
+      const events = await prisma.requestEvent.findMany({
+        where: {
+          requestId: id,
+          ...(eventType ? { eventType: eventType as any } : {}),
+        },
+        include: {
+          actor: {
+            select: { id: true, name: true, email: true },
+          },
+        },
+        orderBy: { occurredAt: "asc" },
+      });
+
+      res.json({ success: true, data: events });
+    } catch (error) {
+      console.error("Admin thread events error:", error);
+      res.status(500).json({ success: false, error: "Error al obtener eventos del thread" });
+    }
+  });
+
   app.post("/api/admin/resolve-expired-quotes", authenticate, requireSuperAdmin, async (req, res) => {
     try {
       const result = await resolveExpiredQuotes();

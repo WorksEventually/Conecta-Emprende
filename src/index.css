@@ -726,6 +726,153 @@ body,.app-shell,.app-content{background:var(--neutral)}
   to { transform: scaleX(0); }
 }
 
+/* Admin Events Timeline */
+.admin-events-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.event-card {
+  background: var(--paper);
+  border: 1px solid var(--secondary);
+  border-radius: 8px;
+  padding: 1rem;
+  transition: border-color 0.2s;
+}
+
+.event-card:hover {
+  border-color: var(--tertiary);
+}
+
+.event-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--secondary);
+}
+
+.event-meta {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.event-index {
+  font-size: 0.75rem;
+  color: var(--secondary);
+  font-weight: 600;
+}
+
+.event-type {
+  font-weight: 600;
+  color: var(--primary);
+  font-size: 0.875rem;
+}
+
+.event-cycle {
+  font-size: 0.75rem;
+  color: var(--tertiary);
+  background: var(--neutral);
+  padding: 0.125rem 0.5rem;
+  border-radius: 4px;
+  border: 1px solid var(--secondary);
+}
+
+.event-time {
+  font-size: 0.75rem;
+  color: var(--secondary);
+  font-family: 'Courier New', monospace;
+}
+
+.event-details {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.event-actor {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--primary);
+}
+
+.event-actor span {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.event-actor small {
+  font-size: 0.75rem;
+  color: var(--secondary);
+}
+
+.event-actor .system-actor {
+  color: var(--secondary);
+  font-style: italic;
+}
+
+.event-ids {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.event-ids small {
+  font-size: 0.7rem;
+  color: var(--secondary);
+}
+
+.event-ids code {
+  background: var(--neutral);
+  padding: 0.125rem 0.375rem;
+  border-radius: 3px;
+  font-size: 0.7rem;
+  border: 1px solid var(--secondary);
+}
+
+.event-metadata {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--secondary);
+}
+
+.metadata-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 0.5rem;
+  background: var(--neutral);
+  border: 1px solid var(--secondary);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.2s;
+  font-size: 0.875rem;
+  color: var(--primary);
+}
+
+.metadata-toggle:hover {
+  background: var(--paper);
+}
+
+.metadata-content {
+  margin-top: 0.5rem;
+  padding: 1rem;
+  background: var(--neutral);
+  border: 1px solid var(--secondary);
+  border-radius: 4px;
+  overflow-x: auto;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--primary);
+}
+
 /* Final palette lock, keep late-loaded legacy styles on brand */
 .topbar,.toast{background:var(--primary);color:var(--neutral)}
 .brand,.account-button,.auth-link{color:var(--neutral)}
