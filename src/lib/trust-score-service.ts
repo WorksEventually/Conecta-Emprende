@@ -1,5 +1,6 @@
 import { prisma } from "./db";
 import { calculateTrustScoreV2 } from "../domain/rating/calculateTrustScoreV2";
+import { rebuildTrustScoreFromEvents } from "./reputation-events-service.js";
 
 export async function recalculateProviderTrustScore(providerId: string): Promise<{
   public_score: number | null;
@@ -15,20 +16,30 @@ export async function recalculateProviderTrustScore(providerId: string): Promise
 
   if (!provider) throw new Error(`Provider ${providerId} not found`);
 
-  const threads = await prisma.quoteThread.findMany({
-    where: { providerId, closure_outcome: "BILATERAL" },
-    select: { senderId: true },
+  const eventData = await rebuildTrustScoreFromEvents(prisma, providerId);
+
+  const evidence = await prisma.reputationEvent.findMany({
+    where: {
+      providerId,
+      invalidatedAt: null,
+      evidenceType: 'BILATERAL_COMPLETION',
+    },
+    include: {
+      request: { select: { senderId: true } },
+    },
   });
 
   const bilateralCompletionsByRequester = new Map<string, number>();
-  threads.forEach((t) => {
-    bilateralCompletionsByRequester.set(
-      t.senderId,
-      (bilateralCompletionsByRequester.get(t.senderId) || 0) + 1
-    );
+  evidence.forEach((ev) => {
+    if (ev.request?.senderId) {
+      bilateralCompletionsByRequester.set(
+        ev.request.senderId,
+        (bilateralCompletionsByRequester.get(ev.request.senderId) || 0) + 1
+      );
+    }
   });
 
-  const uniqueRequesters = bilateralCompletionsByRequester.size;
+  const uniqueRequesters = eventData.requesterDiversityScore;
 
   const reviews = await prisma.review.findMany({
     where: { providerId },
@@ -65,7 +76,7 @@ export async function recalculateProviderTrustScore(providerId: string): Promise
     where: { providerId },
     update: {
       trustScore: result.internal_score,
-      bilateralCompletions: threads.length,
+      bilateralCompletions: evidence.length,
       uniqueRequesters,
       lastRecalculatedAt: new Date(),
       updatedAt: new Date(),
@@ -73,7 +84,7 @@ export async function recalculateProviderTrustScore(providerId: string): Promise
     create: {
       providerId,
       trustScore: result.internal_score,
-      bilateralCompletions: threads.length,
+      bilateralCompletions: evidence.length,
       uniqueRequesters,
       lastRecalculatedAt: new Date(),
     },
