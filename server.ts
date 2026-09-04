@@ -78,6 +78,8 @@ import {
   getThreadById,
   addMessage,
   updateThread,
+  updateThreadWithLocking,
+  ConcurrencyError,
 } from "./src/lib/quotes-service";
 import { emitRequestEvent } from "./src/lib/request-events-service.js";
 import { createReputationEvidence } from "./src/lib/reputation-events-service.js";
@@ -1094,7 +1096,7 @@ async function startServer() {
       if (!parsed.success) {
         return res.status(400).json({ success: false, error: "Datos inválidos", details: parsed.error.issues });
       }
-      const { role } = parsed.data;
+      const { role, version } = parsed.data;
 
       const { thread, role: participantRole } = await getThreadParticipantRole(id, userId);
       if (!thread) return res.status(404).json({ success: false, error: "Solicitud no encontrada" });
@@ -1135,7 +1137,11 @@ async function startServer() {
 
         updateData.status = otherConfirmed ? "COMPLETED" : "IN_CONVERSATION";
 
-        await tx.quoteThread.update({ where: { id }, data: updateData });
+        if (version !== undefined) {
+          await updateThreadWithLocking(id, version, updateData, tx);
+        } else {
+          await tx.quoteThread.update({ where: { id }, data: updateData });
+        }
 
         if (otherConfirmed) {
           const completionEvent = await emitRequestEvent(prisma, {
@@ -1185,6 +1191,9 @@ async function startServer() {
 
       res.json({ success: true, message });
     } catch (error) {
+      if (error instanceof ConcurrencyError) {
+        return res.status(409).json({ success: false, error: error.message });
+      }
       log.error("Complete quote error", { error });
       res.status(500).json({ success: false, error: "Error al confirmar cierre" });
     }

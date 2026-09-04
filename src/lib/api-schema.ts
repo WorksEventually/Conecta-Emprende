@@ -81,6 +81,7 @@ export const quoteUpdateSchema = z.object({
 
 export const quoteCompletionSchema = z.object({
   role: z.enum(["REQUESTER", "PROVIDER"]),
+  version: z.number().int().optional(),
 });
 
 export const quoteAcceptanceSchema = z.object({

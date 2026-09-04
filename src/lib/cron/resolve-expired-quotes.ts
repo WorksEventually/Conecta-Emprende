@@ -5,6 +5,7 @@ import { analyzeProviderRisk } from "../risk-telemetry-service";
 import { emitRequestEvent } from "../request-events-service.js";
 import { createReputationEvidence } from "../reputation-events-service.js";
 import { createLogger } from "../logger.js";
+import { updateThreadWithLocking, ConcurrencyError } from "../quotes-service";
 
 const log = createLogger('CronExpiredQuotes');
 
@@ -56,15 +57,28 @@ export async function resolveExpiredQuotes() {
     }
 
     await prisma.$transaction(async (tx) => {
-      await tx.quoteThread.update({
-        where: { id: thread.id },
-        data: { 
-          workflow_phase: WorkflowPhase.CLOSED, 
-          closure_outcome, 
-          completedAt: now, 
-          status: legacyStatus 
-        },
-      });
+      try {
+        await updateThreadWithLocking(
+          thread.id,
+          thread.version,
+          { 
+            workflow_phase: WorkflowPhase.CLOSED, 
+            closure_outcome, 
+            completedAt: now, 
+            status: legacyStatus 
+          },
+          tx
+        );
+      } catch (error) {
+        if (error instanceof ConcurrencyError) {
+          log.warn('Cron detected concurrent update, skipping thread', {
+            threadId: thread.id,
+            version: thread.version,
+          });
+          return;
+        }
+        throw error;
+      }
 
       const timeoutEvent = await emitRequestEvent(prisma, {
         requestId: thread.id,

@@ -6,6 +6,51 @@ import { createLogger } from "./logger.js";
 
 const log = createLogger('QuotesService');
 
+export class ConcurrencyError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ConcurrencyError';
+  }
+}
+
+export async function updateThreadWithLocking(
+  threadId: string,
+  expectedVersion: number,
+  updates: Record<string, any>,
+  tx?: any
+): Promise<void> {
+  const db = tx || prisma;
+  
+  const updateData = {
+    ...updates,
+    version: { increment: 1 },
+  };
+
+  const result = await db.quoteThread.updateMany({
+    where: {
+      id: threadId,
+      version: expectedVersion,
+    },
+    data: updateData,
+  });
+
+  if (result.count === 0) {
+    log.warn('Optimistic locking conflict detected', {
+      threadId,
+      expectedVersion,
+    });
+    throw new ConcurrencyError(
+      'El thread fue modificado por otro usuario. Por favor recargá la página.'
+    );
+  }
+
+  log.info('Thread updated with optimistic locking', {
+    threadId,
+    oldVersion: expectedVersion,
+    newVersion: expectedVersion + 1,
+  });
+}
+
 export function getLegacyDisplayStatus(
   workflow_phase: WorkflowPhase | string,
   closure_outcome: ClosureOutcome | string | null
