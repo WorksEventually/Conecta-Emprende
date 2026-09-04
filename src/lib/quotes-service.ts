@@ -2,6 +2,8 @@ import type { WorkflowPhase, ClosureOutcome, ModerationState } from "@prisma/cli
 import { prisma } from "./db";
 import { analyzeProviderRisk } from "./risk-telemetry-service";
 import { emitRequestEvent } from "./request-events-service.js";
+import { createReputationEvidence } from "./reputation-events-service.js";
+import { recalculateProviderTrustScore } from "./trust-score-service";
 import { createLogger } from "./logger.js";
 
 const log = createLogger('QuotesService');
@@ -249,6 +251,113 @@ export async function createThread(data: {
   return full!;
 }
 
+async function resolveTimeoutInline(thread: any): Promise<void> {
+  const now = new Date();
+  
+  if (
+    thread.workflow_phase !== 'COMPLETION_PENDING' ||
+    !thread.completionDeadline ||
+    thread.completionDeadline.getTime() > now.getTime()
+  ) {
+    return;
+  }
+
+  log.info('Lazy expiration triggered', { threadId: thread.id });
+
+  const { confirmedByRequesterAt, confirmedByProviderAt } = thread;
+  let closure_outcome: ClosureOutcome;
+
+  if (confirmedByRequesterAt && confirmedByProviderAt) {
+    closure_outcome = 'BILATERAL' as ClosureOutcome;
+  } else if (confirmedByRequesterAt && !confirmedByProviderAt) {
+    closure_outcome = 'REQUESTER_CONFIRMED_PROVIDER_NO_RESPONSE' as ClosureOutcome;
+  } else if (confirmedByProviderAt && !confirmedByRequesterAt) {
+    closure_outcome = 'PROVIDER_CLAIMED_REQUESTER_NO_RESPONSE' as ClosureOutcome;
+  } else {
+    log.warn('Thread in COMPLETION_PENDING without confirmations', { 
+      threadId: thread.id 
+    });
+    closure_outcome = 'CANCELLED_BY_REQUESTER' as ClosureOutcome;
+  }
+
+  let legacyStatus: string;
+  switch (closure_outcome) {
+    case 'BILATERAL':
+      legacyStatus = "COMPLETED";
+      break;
+    case 'REQUESTER_CONFIRMED_PROVIDER_NO_RESPONSE':
+      legacyStatus = "CLOSED_PROVIDER";
+      break;
+    case 'PROVIDER_CLAIMED_REQUESTER_NO_RESPONSE':
+      legacyStatus = "CLOSED_REQUESTER";
+      break;
+    default:
+      legacyStatus = "CLOSED";
+  }
+
+  await prisma.$transaction(async (tx) => {
+    try {
+      await updateThreadWithLocking(
+        thread.id,
+        thread.version,
+        { 
+          workflow_phase: 'CLOSED' as WorkflowPhase, 
+          closure_outcome, 
+          completedAt: now, 
+          status: legacyStatus 
+        },
+        tx
+      );
+    } catch (error) {
+      if (error instanceof ConcurrencyError) {
+        log.info('Lazy expiration detected concurrent update, skipping', {
+          threadId: thread.id,
+        });
+        return;
+      }
+      throw error;
+    }
+
+    const timeoutEvent = await emitRequestEvent(prisma, {
+      requestId: thread.id,
+      eventType: 'COMPLETION_TIMEOUT',
+      completionCycleNo: thread.cycleNo || 0,
+      metadata: {
+        outcome: closure_outcome,
+        deadline: thread.completionDeadline?.toISOString(),
+        confirmedByRequester: !!confirmedByRequesterAt,
+        confirmedByProvider: !!confirmedByProviderAt,
+        lazyExpiration: true,
+      },
+      tx,
+    });
+
+    if (closure_outcome === 'BILATERAL') {
+      await createReputationEvidence(prisma, {
+        providerId: thread.providerId,
+        requestId: thread.id,
+        evidenceType: 'BILATERAL_COMPLETION',
+        evidenceWeight: 1.0,
+        sourceEventId: timeoutEvent.id,
+        tx,
+      });
+    }
+
+    log.info('Thread closed by lazy expiration', { 
+      threadId: thread.id, 
+      outcome: closure_outcome 
+    });
+  });
+
+  if (closure_outcome === 'BILATERAL') {
+    recalculateProviderTrustScore(thread.providerId)
+      .catch((err) => log.error('TrustScore lazy recalc failed', { error: err }));
+    
+    analyzeProviderRisk(thread.providerId)
+      .catch((err) => log.error('RiskTelemetry lazy analysis failed', { error: err }));
+  }
+}
+
 export async function getThreadById(threadId: string): Promise<QuoteThreadWithMessages | null> {
   const t = await prisma.quoteThread.findUnique({
     where: { id: threadId },
@@ -267,7 +376,24 @@ export async function getThreadById(threadId: string): Promise<QuoteThreadWithMe
 
   if (!t) return null;
 
-  return mapThread(t);
+  await resolveTimeoutInline(t);
+
+  const refreshed = await prisma.quoteThread.findUnique({
+    where: { id: threadId },
+    include: {
+      messages: {
+        orderBy: { createdAt: "asc" },
+      },
+      sender: {
+        select: { id: true, name: true, image: true },
+      },
+      provider: {
+        select: { id: true, displayName: true, slug: true },
+      },
+    },
+  });
+
+  return refreshed ? mapThread(refreshed) : null;
 }
 
 export async function addMessage(threadId: string, data: {
