@@ -1056,6 +1056,13 @@ async function startServer() {
         return res.status(403).json({ success: false, error: "No participás en esta solicitud" });
       }
 
+      if (thread.closure_outcome !== null) {
+        return res.status(403).json({ 
+          success: false,
+          error: "Esta conversación está cerrada. No se pueden enviar más mensajes." 
+        });
+      }
+
       const newMsg = await addMessage(threadId, {
         authorId: userId,
         authorRole: role,

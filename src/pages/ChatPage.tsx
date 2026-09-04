@@ -393,17 +393,31 @@ export default function ChatPage() {
               </form>
             )}
 
-            <form className="message-composer" onSubmit={handleSubmit}>
-              <textarea
-                value={reply}
-                onChange={event => setReply(event.target.value)}
-                placeholder="Escribí un mensaje con los detalles del acuerdo…"
-                rows={2}
-              />
-              <button className="button primary" disabled={!reply.trim()} aria-label="Enviar mensaje">
-                <Send /> Enviar
-              </button>
-            </form>
+            {thread.closure_outcome !== null ? (
+              <div className="message-composer" style={{ 
+                padding: '1rem', 
+                backgroundColor: '#f3f4f6', 
+                borderRadius: '0.5rem',
+                textAlign: 'center',
+                color: '#6b7280'
+              }}>
+                <p style={{ margin: 0, fontWeight: 500 }}>
+                  Esta conversación está cerrada. No se pueden enviar más mensajes.
+                </p>
+              </div>
+            ) : (
+              <form className="message-composer" onSubmit={handleSubmit}>
+                <textarea
+                  value={reply}
+                  onChange={event => setReply(event.target.value)}
+                  placeholder="Escribí un mensaje con los detalles del acuerdo…"
+                  rows={2}
+                />
+                <button className="button primary" disabled={!reply.trim()} aria-label="Enviar mensaje">
+                  <Send /> Enviar
+                </button>
+              </form>
+            )}
           </footer>
         )}
       </main>
