@@ -82,6 +82,7 @@ import {
   ConcurrencyError,
   rejectCompletion,
   withdrawCompletion,
+  validateNotExpired,
 } from "./src/lib/quotes-service";
 import { emitRequestEvent } from "./src/lib/request-events-service.js";
 import { createReputationEvidence } from "./src/lib/reputation-events-service.js";
@@ -1165,15 +1166,16 @@ async function startServer() {
       if (mappedRole !== role) return res.status(403).json({ success: false, error: `Tu rol es ${mappedRole}, no ${role}` });
       if (thread.workflow_phase === "CLOSED") return res.status(400).json({ success: false, error: "Esta solicitud ya está cerrada" });
 
-      if (
-        thread.workflow_phase === "COMPLETION_PENDING" &&
-        thread.completionDeadline &&
-        thread.completionDeadline.getTime() <= Date.now()
-      ) {
-        return res.status(409).json({
-          success: false,
-          error: "La ventana de 72 horas expiró; la solicitud se cerrará automáticamente",
-        });
+      try {
+        await validateNotExpired(id);
+      } catch (error: any) {
+        if (error.message === 'TIMEOUT_ALREADY_RESOLVED') {
+          return res.status(409).json({
+            success: false,
+            error: "La ventana de 72 horas expiró; la solicitud se cerrará automáticamente",
+          });
+        }
+        throw error;
       }
 
       await prisma.$transaction(async (tx) => {
@@ -1360,6 +1362,11 @@ async function startServer() {
 
       res.json({ success: true });
     } catch (error: any) {
+      if (error.message === 'TIMEOUT_ALREADY_RESOLVED') {
+        return res.status(409).json({
+          error: 'La ventana de 72 horas expiró; la solicitud se cerrará automáticamente'
+        });
+      }
       if (error.message.includes('esperar') || error.message.includes('mensaje')) {
         return res.status(400).json({ error: error.message });
       }
@@ -1394,6 +1401,11 @@ async function startServer() {
 
       res.json({ success: true });
     } catch (error: any) {
+      if (error.message === 'TIMEOUT_ALREADY_RESOLVED') {
+        return res.status(409).json({
+          error: 'La ventana de 72 horas expiró; la solicitud se cerrará automáticamente'
+        });
+      }
       if (error.message.includes('iniciador')) {
         return res.status(403).json({ error: error.message });
       }

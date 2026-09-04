@@ -362,6 +362,34 @@ async function resolveTimeoutInline(thread: any): Promise<void> {
   }
 }
 
+export async function validateNotExpired(threadId: string): Promise<void> {
+  const thread = await prisma.quoteThread.findUnique({
+    where: { id: threadId },
+    select: {
+      id: true,
+      workflow_phase: true,
+      completionDeadline: true,
+      confirmedByRequesterAt: true,
+      confirmedByProviderAt: true,
+      providerId: true,
+      version: true,
+      cycleNo: true,
+    },
+  });
+
+  if (!thread) {
+    throw new Error('Thread no encontrado');
+  }
+
+  if (thread.completionDeadline) {
+    const now = new Date();
+    if (now >= thread.completionDeadline) {
+      await resolveTimeoutInline(thread);
+      throw new Error('TIMEOUT_ALREADY_RESOLVED');
+    }
+  }
+}
+
 export async function getThreadById(threadId: string): Promise<QuoteThreadWithMessages | null> {
   const t = await prisma.quoteThread.findUnique({
     where: { id: threadId },
@@ -556,6 +584,8 @@ export async function rejectCompletion(
     throw new Error('Thread no está en ciclo de completado');
   }
 
+  await validateNotExpired(threadId);
+
   if (thread.completionInitiatorUserId === actorUserId) {
     throw new Error('El iniciador no puede rechazar. Usa withdrawal.');
   }
@@ -621,6 +651,8 @@ export async function withdrawCompletion(
   if (thread.workflow_phase !== 'COMPLETION_PENDING') {
     throw new Error('Thread no está en ciclo de completado');
   }
+
+  await validateNotExpired(threadId);
 
   if (thread.completionInitiatorUserId !== actorUserId) {
     throw new Error('Solo el iniciador puede retirar la solicitud de cierre');
