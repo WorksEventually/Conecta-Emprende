@@ -3,6 +3,7 @@ import { prisma } from "../db";
 import { recalculateProviderTrustScore } from "../trust-score-service";
 import { analyzeProviderRisk } from "../risk-telemetry-service";
 import { emitRequestEvent } from "../request-events-service.js";
+import { createReputationEvidence } from "../reputation-events-service.js";
 import { createLogger } from "../logger.js";
 
 const log = createLogger('CronExpiredQuotes');
@@ -65,7 +66,7 @@ export async function resolveExpiredQuotes() {
         },
       });
 
-      await emitRequestEvent(prisma, {
+      const timeoutEvent = await emitRequestEvent(prisma, {
         requestId: thread.id,
         eventType: 'COMPLETION_TIMEOUT',
         completionCycleNo: thread.cycleNo || 0,
@@ -77,6 +78,17 @@ export async function resolveExpiredQuotes() {
         },
         tx,
       });
+
+      if (closure_outcome === ClosureOutcome.BILATERAL) {
+        await createReputationEvidence(prisma, {
+          providerId: thread.providerId,
+          requestId: thread.id,
+          evidenceType: 'BILATERAL_COMPLETION',
+          evidenceWeight: 1.0,
+          sourceEventId: timeoutEvent.id,
+          tx,
+        });
+      }
 
       log.info('Thread closed by timeout', { 
         threadId: thread.id, 
