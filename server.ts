@@ -81,6 +81,7 @@ import {
   updateThreadWithLocking,
   ConcurrencyError,
   rejectCompletion,
+  withdrawCompletion,
 } from "./src/lib/quotes-service";
 import { emitRequestEvent } from "./src/lib/request-events-service.js";
 import { createReputationEvidence } from "./src/lib/reputation-events-service.js";
@@ -1367,6 +1368,37 @@ async function startServer() {
       }
       log.error('Error rejecting completion', { error: error.message });
       res.status(500).json({ error: 'Error al rechazar cierre' });
+    }
+  });
+
+  app.post("/api/quotes/:id/withdraw-completion", authenticate, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { userId } = req.user;
+
+      const thread = await prisma.quoteThread.findUnique({
+        where: { id },
+        select: { senderId: true, providerId: true }
+      });
+
+      if (!thread) {
+        return res.status(404).json({ error: 'Thread no encontrado' });
+      }
+
+      const isParticipant = userId === thread.senderId || userId === thread.providerId;
+      if (!isParticipant) {
+        return res.status(403).json({ error: 'No sos parte de esta conversación' });
+      }
+
+      await withdrawCompletion(id, userId);
+
+      res.json({ success: true });
+    } catch (error: any) {
+      if (error.message.includes('iniciador')) {
+        return res.status(403).json({ error: error.message });
+      }
+      log.error('Error withdrawing completion', { error: error.message });
+      res.status(500).json({ error: 'Error al retirar solicitud de cierre' });
     }
   });
 

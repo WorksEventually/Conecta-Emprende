@@ -600,6 +600,56 @@ export async function rejectCompletion(
   log.info('Completion rejected', { threadId, actorUserId, note });
 }
 
+export async function withdrawCompletion(
+  threadId: string,
+  actorUserId: string
+): Promise<void> {
+  const thread = await prisma.quoteThread.findUnique({
+    where: { id: threadId },
+    select: {
+      workflow_phase: true,
+      completionInitiatorUserId: true,
+      senderId: true,
+      providerId: true,
+    },
+  });
+
+  if (!thread) {
+    throw new Error('Thread no encontrado');
+  }
+
+  if (thread.workflow_phase !== 'COMPLETION_PENDING') {
+    throw new Error('Thread no está en ciclo de completado');
+  }
+
+  if (thread.completionInitiatorUserId !== actorUserId) {
+    throw new Error('Solo el iniciador puede retirar la solicitud de cierre');
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.quoteThread.update({
+      where: { id: threadId },
+      data: {
+        workflow_phase: 'OPEN',
+        completionDeadline: null,
+        confirmedByRequesterAt: null,
+        confirmedByProviderAt: null,
+        completionInitiatorUserId: null,
+      },
+    });
+
+    await emitRequestEvent(prisma, {
+      requestId: threadId,
+      eventType: 'COMPLETION_REQUEST_WITHDRAWN',
+      actorUserId,
+      metadata: {},
+      tx,
+    });
+  });
+
+  log.info('Completion withdrawn', { threadId, actorUserId });
+}
+
 function computeDateLabel(date: Date): string {
   const now = new Date();
   const diff = now.getTime() - date.getTime();
