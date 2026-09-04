@@ -49,6 +49,35 @@ export interface ModerationAuditLog {
   createdAt: string;
 }
 
+export type RequestEventType =
+  | "REQUEST_CREATED"
+  | "PROVIDER_RESPONDED"
+  | "QUOTE_ACCEPTED"
+  | "COMPLETION_REQUESTED"
+  | "COMPLETION_CONFIRMED"
+  | "COMPLETION_TIMEOUT"
+  | "CANCELLED_BY_REQUESTER"
+  | "CANCELLED_BY_PROVIDER"
+  | "MODERATION_FLAG"
+  | "MODERATION_CLOSURE"
+  | "REOPENED"
+  | "MESSAGE_SENT"
+  | "DEADLINE_EXTENDED"
+  | "ADMIN_OVERRIDE";
+
+export interface RequestEvent {
+  id: string;
+  requestId: string;
+  eventType: RequestEventType;
+  actorUserId: string | null;
+  actor: { id: string; name: string | null; email: string } | null;
+  completionCycleNo: number;
+  idempotencyKey: string;
+  metadataJson: Record<string, unknown> | null;
+  occurredAt: string;
+  createdAt: string;
+}
+
 export const adminApi = {
   getRiskReports: (status?: string) => {
     const query = status ? `?status=${encodeURIComponent(status)}` : "";
@@ -90,4 +119,8 @@ export const adminApi = {
       body: JSON.stringify({ reason }),
     }),
   getAuditLog: () => adminRequest<ModerationAuditLog[]>("/api/admin/audit-log"),
+  getThreadEvents: (threadId: string, eventType?: RequestEventType) => {
+    const query = eventType ? `?eventType=${encodeURIComponent(eventType)}` : "";
+    return adminRequest<RequestEvent[]>(`/api/admin/threads/${encodeURIComponent(threadId)}/events${query}`);
+  },
 };

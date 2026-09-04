@@ -78,10 +78,14 @@ import {
   getThreadById,
   addMessage,
   updateThread,
+  updateThreadWithLocking,
+  ConcurrencyError,
 } from "./src/lib/quotes-service";
+import { emitRequestEvent } from "./src/lib/request-events-service.js";
+import { createReputationEvidence } from "./src/lib/reputation-events-service.js";
+import { createLogger } from "./src/lib/logger.js";
 
-
-
+const log = createLogger('Server');
 function normalizeAvailability(value: unknown): Availability {
   return Object.values(Availability).includes(value as Availability) ? value as Availability : Availability.DISPONIBLE;
 }
@@ -161,6 +165,63 @@ async function startServer() {
       return res.status(401).json({ success: false, error: "Sesión expirada" });
     }
     req.user = payload;
+    next();
+  };
+
+  // === IDEMPOTENCY MIDDLEWARE ===
+  interface IdempotencyCache {
+    response: any;
+    statusCode: number;
+    timestamp: number;
+  }
+
+  const idempotencyStore = new Map<string, IdempotencyCache>();
+  const IDEMPOTENCY_TTL_MS = 24 * 60 * 60 * 1000;
+
+  function cleanupExpiredIdempotencyKeys() {
+    const now = Date.now();
+    for (const [key, value] of idempotencyStore.entries()) {
+      if (now - value.timestamp > IDEMPOTENCY_TTL_MS) {
+        idempotencyStore.delete(key);
+      }
+    }
+  }
+
+  setInterval(cleanupExpiredIdempotencyKeys, 60 * 60 * 1000);
+
+  const idempotencyMiddleware = (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    const idempotencyKey = req.headers['idempotency-key'] as string;
+    
+    if (!idempotencyKey) {
+      return next();
+    }
+
+    const cached = idempotencyStore.get(idempotencyKey);
+    if (cached) {
+      log.info('Idempotent request detected, returning cached response', {
+        key: idempotencyKey,
+        method: req.method,
+        path: req.path,
+      });
+      return res.status(cached.statusCode).json(cached.response);
+    }
+
+    const originalJson = res.json.bind(res);
+    res.json = function(body: any) {
+      if (res.statusCode >= 200 && res.statusCode < 300) {
+        idempotencyStore.set(idempotencyKey, {
+          response: body,
+          statusCode: res.statusCode,
+          timestamp: Date.now(),
+        });
+        log.info('Cached idempotent response', {
+          key: idempotencyKey,
+          statusCode: res.statusCode,
+        });
+      }
+      return originalJson(body);
+    };
+
     next();
   };
 
@@ -900,7 +961,7 @@ async function startServer() {
   });
 
   // POST Request Quote — creates a new quote thread
-  app.post("/api/quotes", authenticate, async (req, res) => {
+  app.post("/api/quotes", authenticate, idempotencyMiddleware, async (req, res) => {
     try {
       const parsed = quoteRequestSchema.safeParse(req.body);
 
@@ -1084,7 +1145,7 @@ async function startServer() {
     }
   });
 
-  app.patch("/api/quotes/:id/complete", authenticate, async (req, res) => {
+  app.patch("/api/quotes/:id/complete", authenticate, idempotencyMiddleware, async (req, res) => {
     try {
       const { id } = req.params;
       const { userId } = req.user;
@@ -1092,7 +1153,7 @@ async function startServer() {
       if (!parsed.success) {
         return res.status(400).json({ success: false, error: "Datos inválidos", details: parsed.error.issues });
       }
-      const { role } = parsed.data;
+      const { role, version } = parsed.data;
 
       const { thread, role: participantRole } = await getThreadParticipantRole(id, userId);
       if (!thread) return res.status(404).json({ success: false, error: "Solicitud no encontrada" });
@@ -1102,9 +1163,6 @@ async function startServer() {
       if (mappedRole !== role) return res.status(403).json({ success: false, error: `Tu rol es ${mappedRole}, no ${role}` });
       if (thread.workflow_phase === "CLOSED") return res.status(400).json({ success: false, error: "Esta solicitud ya está cerrada" });
 
-      // P2 §4.5 / §8.2: at or after the deadline, timeout resolution wins and
-      // late confirmations must not be accepted. The cron job closes the thread
-      // with the corresponding unilateral outcome.
       if (
         thread.workflow_phase === "COMPLETION_PENDING" &&
         thread.completionDeadline &&
@@ -1116,41 +1174,86 @@ async function startServer() {
         });
       }
 
-      const now = new Date();
-      const deadline = new Date(now.getTime() + 72 * 60 * 60 * 1000);
-      const updateData: any = { workflow_phase: "COMPLETION_PENDING", completionDeadline: deadline };
+      await prisma.$transaction(async (tx) => {
+        const dbTimeResult = await tx.$queryRaw<Array<{ now: Date; deadline: Date }>>`
+          SELECT NOW() as now, NOW() + INTERVAL '72 hours' as deadline
+        `;
+        const { now, deadline } = dbTimeResult[0];
+        const updateData: any = { workflow_phase: "COMPLETION_PENDING", completionDeadline: deadline };
 
-      if (role === "REQUESTER") updateData.confirmedByRequesterAt = now;
-      else updateData.confirmedByProviderAt = now;
+        if (role === "REQUESTER") updateData.confirmedByRequesterAt = now;
+        else updateData.confirmedByProviderAt = now;
 
-      const otherConfirmed =
-        (role === "REQUESTER" && thread.confirmedByProviderAt) ||
-        (role === "PROVIDER" && thread.confirmedByRequesterAt);
+        const otherConfirmed =
+          (role === "REQUESTER" && thread.confirmedByProviderAt) ||
+          (role === "PROVIDER" && thread.confirmedByRequesterAt);
 
-      if (otherConfirmed) {
-        updateData.workflow_phase = "CLOSED";
-        updateData.closure_outcome = "BILATERAL";
-        updateData.completedAt = now;
-      }
+        if (otherConfirmed) {
+          updateData.workflow_phase = "CLOSED";
+          updateData.closure_outcome = "BILATERAL";
+          updateData.completedAt = now;
+        }
 
-      updateData.status = otherConfirmed ? "COMPLETED" : "IN_CONVERSATION";
+        updateData.status = otherConfirmed ? "COMPLETED" : "IN_CONVERSATION";
 
-      await prisma.quoteThread.update({ where: { id }, data: updateData });
-      const message = otherConfirmed
+        if (version !== undefined) {
+          await updateThreadWithLocking(id, version, updateData, tx);
+        } else {
+          await tx.quoteThread.update({ where: { id }, data: updateData });
+        }
+
+        if (otherConfirmed) {
+          const completionEvent = await emitRequestEvent(prisma, {
+            requestId: id,
+            eventType: 'COMPLETION_CONFIRMED',
+            actorUserId: userId,
+            completionCycleNo: thread.cycleNo || 0,
+            metadata: { bilateralCompletion: true },
+            tx,
+          });
+
+          await createReputationEvidence(prisma, {
+            providerId: thread.providerId,
+            requestId: id,
+            evidenceType: 'BILATERAL_COMPLETION',
+            evidenceWeight: 1.0,
+            sourceEventId: completionEvent.id,
+            tx,
+          });
+
+          log.info('Bilateral completion confirmed', { threadId: id, userId });
+        } else {
+          await emitRequestEvent(prisma, {
+            requestId: id,
+            eventType: 'COMPLETION_REQUESTED',
+            actorUserId: userId,
+            completionCycleNo: thread.cycleNo || 0,
+            metadata: { actor: role === "REQUESTER" ? "requester" : "provider" },
+            tx,
+          });
+
+          log.info('Completion requested', { threadId: id, userId, role });
+        }
+      });
+
+      const message = thread.confirmedByRequesterAt || thread.confirmedByProviderAt
         ? "¡Trabajo confirmado! Ambas partes confirmaron el cierre."
         : "Confirmación registrada. Se activó ventana de 72h para que la otra parte confirme.";
 
-      if (otherConfirmed) {
+      if (thread.confirmedByRequesterAt && thread.confirmedByProviderAt) {
         recalculateProviderTrustScore(thread.providerId)
-          .catch((err) => console.error("[TrustScore] Recalc failed:", err));
+          .catch((err) => log.error("[TrustScore] Recalc failed", { error: err }));
         
         analyzeProviderRisk(thread.providerId)
-          .catch((err) => console.error("[RiskTelemetry] Analysis failed:", err));
+          .catch((err) => log.error("[RiskTelemetry] Analysis failed", { error: err }));
       }
 
       res.json({ success: true, message });
     } catch (error) {
-      console.error("Complete quote error:", error);
+      if (error instanceof ConcurrencyError) {
+        return res.status(409).json({ success: false, error: error.message });
+      }
+      log.error("Complete quote error", { error });
       res.status(500).json({ success: false, error: "Error al confirmar cierre" });
     }
   });
@@ -1187,14 +1290,34 @@ async function startServer() {
         acceptedBy: userId,
       };
 
-      const updated = await prisma.quoteThread.update({
-        where: { id },
-        data: { acceptedQuotation },
+      await prisma.$transaction(async (tx) => {
+        await tx.quoteThread.update({
+          where: { id },
+          data: { acceptedQuotation },
+        });
+
+        await emitRequestEvent(prisma, {
+          requestId: id,
+          eventType: 'QUOTE_ACCEPTED',
+          actorUserId: userId,
+          metadata: {
+            price: thread.quotedPriceLabel,
+            delivery: thread.quotedDeliveryTime,
+          },
+          tx,
+        });
+
+        log.info('Quote accepted event emitted', { threadId: id, userId });
       });
 
-      res.json({ success: true, acceptedQuotation: updated.acceptedQuotation });
+      const updated = await prisma.quoteThread.findUnique({
+        where: { id },
+        select: { acceptedQuotation: true },
+      });
+
+      res.json({ success: true, acceptedQuotation: updated?.acceptedQuotation });
     } catch (error) {
-      console.error("Accept quotation error:", error);
+      log.error("Accept quotation error", { error });
       res.status(500).json({ success: false, error: "Error al aceptar cotización" });
     }
   });
@@ -1487,6 +1610,40 @@ async function startServer() {
     } catch (error) {
       console.error("Audit log error:", error);
       res.status(500).json({ success: false, error: "Error al obtener auditoría" });
+    }
+  });
+
+  app.get("/api/admin/threads/:id/events", authenticate, requireAdminReviewerOrSuperAdmin, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const eventType = req.query.eventType as string | undefined;
+
+      const thread = await prisma.quoteThread.findUnique({
+        where: { id },
+        select: { id: true },
+      });
+
+      if (!thread) {
+        return res.status(404).json({ success: false, error: "Thread no encontrado" });
+      }
+
+      const events = await prisma.requestEvent.findMany({
+        where: {
+          requestId: id,
+          ...(eventType ? { eventType: eventType as any } : {}),
+        },
+        include: {
+          actor: {
+            select: { id: true, name: true, email: true },
+          },
+        },
+        orderBy: { occurredAt: "asc" },
+      });
+
+      res.json({ success: true, data: events });
+    } catch (error) {
+      console.error("Admin thread events error:", error);
+      res.status(500).json({ success: false, error: "Error al obtener eventos del thread" });
     }
   });
 
@@ -1939,7 +2096,7 @@ async function startServer() {
   });
 
   // POST Create Review
-  app.post("/api/reviews", authenticate, async (req, res) => {
+  app.post("/api/reviews", authenticate, idempotencyMiddleware, async (req, res) => {
     try {
       const parsed = reviewCreateSchema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ success: false, error: "Los datos de la reseña son inválidos", details: parsed.error.issues });
@@ -2000,6 +2157,14 @@ async function startServer() {
           },
         },
         include: { reviewer: { select: { id: true, name: true, image: true } }, analysis: true },
+      });
+
+      const evidenceType = reviewWeight === 1.0 ? 'UNILATERAL_REVIEW_QUALIFIED' : 'UNILATERAL_REVIEW_QUALIFIED';
+      await createReputationEvidence(prisma, {
+        providerId,
+        requestId,
+        evidenceType,
+        evidenceWeight: reviewWeight,
       });
 
       const reviewStats = await prisma.review.aggregate({
