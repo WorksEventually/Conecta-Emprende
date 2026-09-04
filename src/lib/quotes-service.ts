@@ -573,6 +573,7 @@ export async function rejectCompletion(
       lastNonSystemicMessageAt: true,
       senderId: true,
       providerId: true,
+      cycleNo: true,
     },
   });
 
@@ -622,6 +623,7 @@ export async function rejectCompletion(
       requestId: threadId,
       eventType: 'COMPLETION_NOT_ACCEPTED',
       actorUserId,
+      completionCycleNo: thread.cycleNo,
       metadata: { note },
       tx,
     });
