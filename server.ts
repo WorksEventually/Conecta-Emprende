@@ -1258,6 +1258,78 @@ async function startServer() {
     }
   });
 
+  // Sprint 6.1.3: Endpoint para proveedor declinar solicitud (antes de interactuar)
+  app.post("/api/quotes/:id/decline", authenticate, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { userId } = req.user;
+      const { reason } = req.body;
+
+      const thread = await prisma.quoteThread.findUnique({
+        where: { id },
+        include: { 
+          messages: true,
+          provider: true
+        }
+      });
+
+      if (!thread) {
+        return res.status(404).json({ error: 'Solicitud no encontrada' });
+      }
+
+      // Validar que el usuario es el proveedor
+      if (thread.provider.userId !== userId) {
+        return res.status(403).json({ error: 'Solo el proveedor puede declinar esta solicitud' });
+      }
+
+      // Validar que NO haya interacción previa del proveedor
+      const quotationHistory = thread.quotationHistory as any[] || [];
+      const hasProviderInteraction = 
+        thread.messages.some(m => m.authorId === userId) || 
+        quotationHistory.length > 0;
+
+      if (hasProviderInteraction) {
+        return res.status(400).json({ 
+          error: 'No se puede declinar tras interacción. Usá cancelación en su lugar.' 
+        });
+      }
+
+      // Validar que no esté ya cerrado
+      if (thread.workflow_phase === 'CLOSED') {
+        return res.status(400).json({ error: 'Esta solicitud ya está cerrada' });
+      }
+
+      // Transacción atómica: cerrar thread + emitir evento
+      await prisma.$transaction(async (tx) => {
+        await tx.quoteThread.update({
+          where: { id },
+          data: {
+            workflow_phase: 'CLOSED',
+            closure_outcome: 'DECLINED_BY_PROVIDER'
+          }
+        });
+
+        await emitRequestEvent(prisma, {
+          requestId: id,
+          eventType: 'REQUEST_DECLINED',
+          actorUserId: userId,
+          metadata: { reason: reason || 'No especificada' },
+          tx
+        });
+      });
+
+      log.info('Request declined by provider', { threadId: id, providerId: thread.providerId, reason });
+
+      res.json({ 
+        success: true, 
+        message: 'Solicitud declinada exitosamente' 
+      });
+    } catch (error: any) {
+      log.error('Error declining request', { error: error.message });
+      res.status(500).json({ error: 'Error al declinar solicitud' });
+    }
+  });
+
   app.post("/api/quotes/:id/accept-quotation", authenticate, async (req, res) => {
     try {
       const { id } = req.params;

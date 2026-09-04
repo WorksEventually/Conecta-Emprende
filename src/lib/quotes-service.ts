@@ -63,6 +63,10 @@ export function getLegacyDisplayStatus(
       case "CANCELLED_BY_REQUESTER": return "CLOSED_REQUESTER";
       case "CANCELLED_BY_PROVIDER": return "CLOSED_PROVIDER";
       case "CANCELLED_BY_PROVIDER_AFTER_ENGAGEMENT": return "CLOSED_PROVIDER";
+      case "DECLINED_BY_PROVIDER": return "CLOSED_PROVIDER"; // Sprint 6
+      case "EXPIRED_NO_PROVIDER_RESPONSE": return "CLOSED_EXPIRED"; // Sprint 6
+      case "ACCOUNT_DEACTIVATED": return "CLOSED_DEACTIVATED"; // Sprint 6
+      case "CLOSED_BY_ADMIN": return "CLOSED_ADMIN"; // Sprint 6
       default: return "CLOSED";
     }
   }
