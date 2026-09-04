@@ -1118,8 +1118,10 @@ async function startServer() {
       }
 
       await prisma.$transaction(async (tx) => {
-        const now = new Date();
-        const deadline = new Date(now.getTime() + 72 * 60 * 60 * 1000);
+        const dbTimeResult = await tx.$queryRaw<Array<{ now: Date; deadline: Date }>>`
+          SELECT NOW() as now, NOW() + INTERVAL '72 hours' as deadline
+        `;
+        const { now, deadline } = dbTimeResult[0];
         const updateData: any = { workflow_phase: "COMPLETION_PENDING", completionDeadline: deadline };
 
         if (role === "REQUESTER") updateData.confirmedByRequesterAt = now;
