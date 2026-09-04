@@ -80,6 +80,7 @@ import {
   updateThread,
 } from "./src/lib/quotes-service";
 import { emitRequestEvent } from "./src/lib/request-events-service.js";
+import { createReputationEvidence } from "./src/lib/reputation-events-service.js";
 import { createLogger } from "./src/lib/logger.js";
 
 const log = createLogger('Server');
@@ -1137,12 +1138,21 @@ async function startServer() {
         await tx.quoteThread.update({ where: { id }, data: updateData });
 
         if (otherConfirmed) {
-          await emitRequestEvent(prisma, {
+          const completionEvent = await emitRequestEvent(prisma, {
             requestId: id,
             eventType: 'COMPLETION_CONFIRMED',
             actorUserId: userId,
             completionCycleNo: thread.cycleNo || 0,
             metadata: { bilateralCompletion: true },
+            tx,
+          });
+
+          await createReputationEvidence(prisma, {
+            providerId: thread.providerId,
+            requestId: id,
+            evidenceType: 'BILATERAL_COMPLETION',
+            evidenceWeight: 1.0,
+            sourceEventId: completionEvent.id,
             tx,
           });
 
@@ -2079,6 +2089,14 @@ async function startServer() {
           },
         },
         include: { reviewer: { select: { id: true, name: true, image: true } }, analysis: true },
+      });
+
+      const evidenceType = reviewWeight === 1.0 ? 'UNILATERAL_REVIEW_QUALIFIED' : 'UNILATERAL_REVIEW_QUALIFIED';
+      await createReputationEvidence(prisma, {
+        providerId,
+        requestId,
+        evidenceType,
+        evidenceWeight: reviewWeight,
       });
 
       const reviewStats = await prisma.review.aggregate({
