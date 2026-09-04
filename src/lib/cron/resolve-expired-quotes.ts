@@ -2,6 +2,10 @@ import { WorkflowPhase, ClosureOutcome } from "@prisma/client";
 import { prisma } from "../db";
 import { recalculateProviderTrustScore } from "../trust-score-service";
 import { analyzeProviderRisk } from "../risk-telemetry-service";
+import { emitRequestEvent } from "../request-events-service.js";
+import { createLogger } from "../logger.js";
+
+const log = createLogger('CronExpiredQuotes');
 
 export async function resolveExpiredQuotes() {
   const now = new Date();
@@ -13,7 +17,7 @@ export async function resolveExpiredQuotes() {
   });
 
   if (expired.length === 0) {
-    console.log(`[Cron] No expired quotes at ${now.toISOString()}`);
+    log.info('No expired quotes', { timestamp: now.toISOString() });
     return { resolved: 0 };
   }
 
@@ -29,7 +33,9 @@ export async function resolveExpiredQuotes() {
     } else if (confirmedByProviderAt && !confirmedByRequesterAt) {
       closure_outcome = ClosureOutcome.PROVIDER_CLAIMED_REQUESTER_NO_RESPONSE;
     } else {
-      console.warn(`Thread ${thread.id} in COMPLETION_PENDING without confirmations. Defaulting CANCELLED_BY_REQUESTER.`);
+      log.warn('Thread in COMPLETION_PENDING without confirmations', { 
+        threadId: thread.id 
+      });
       closure_outcome = ClosureOutcome.CANCELLED_BY_REQUESTER;
     }
 
@@ -48,22 +54,46 @@ export async function resolveExpiredQuotes() {
         legacyStatus = "CLOSED";
     }
 
-    await prisma.quoteThread.update({
-      where: { id: thread.id },
-      data: { workflow_phase: WorkflowPhase.CLOSED, closure_outcome, completedAt: now, status: legacyStatus },
+    await prisma.$transaction(async (tx) => {
+      await tx.quoteThread.update({
+        where: { id: thread.id },
+        data: { 
+          workflow_phase: WorkflowPhase.CLOSED, 
+          closure_outcome, 
+          completedAt: now, 
+          status: legacyStatus 
+        },
+      });
+
+      await emitRequestEvent(prisma, {
+        requestId: thread.id,
+        eventType: 'COMPLETION_TIMEOUT',
+        completionCycleNo: thread.cycleNo || 0,
+        metadata: {
+          outcome: closure_outcome,
+          deadline: thread.completionDeadline?.toISOString(),
+          confirmedByRequester: !!confirmedByRequesterAt,
+          confirmedByProvider: !!confirmedByProviderAt,
+        },
+        tx,
+      });
+
+      log.info('Thread closed by timeout', { 
+        threadId: thread.id, 
+        outcome: closure_outcome 
+      });
     });
-    console.log(`[Cron] Closed thread ${thread.id} with outcome ${closure_outcome}`);
 
     if (closure_outcome === ClosureOutcome.BILATERAL) {
       recalculateProviderTrustScore(thread.providerId)
-        .catch((err) => console.error("[TrustScore] Cron recalc failed:", err));
+        .catch((err) => log.error('TrustScore cron recalc failed', { error: err }));
       
       analyzeProviderRisk(thread.providerId)
-        .catch((err) => console.error("[RiskTelemetry] Cron analysis failed:", err));
+        .catch((err) => log.error('RiskTelemetry cron analysis failed', { error: err }));
     }
     resolved++;
   }
 
-  console.log(`[Cron] Resolved ${resolved} expired quotes.`);
+  log.info('Resolved expired quotes', { resolved });
   return { resolved };
 }

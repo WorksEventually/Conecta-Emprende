@@ -1,6 +1,10 @@
 import type { WorkflowPhase, ClosureOutcome, ModerationState } from "@prisma/client";
 import { prisma } from "./db";
 import { analyzeProviderRisk } from "./risk-telemetry-service";
+import { emitRequestEvent } from "./request-events-service.js";
+import { createLogger } from "./logger.js";
+
+const log = createLogger('QuotesService');
 
 export function getLegacyDisplayStatus(
   workflow_phase: WorkflowPhase | string,
@@ -155,26 +159,48 @@ export async function createThread(data: {
   subject: string;
   initialMessage: string;
 }): Promise<QuoteThreadWithMessages> {
-  const thread = await prisma.quoteThread.create({
-    data: {
+  const result = await prisma.$transaction(async (tx) => {
+    const thread = await tx.quoteThread.create({
+      data: {
+        senderId: data.senderId,
+        providerId: data.providerId,
+        catalogItemId: data.catalogItemId || null,
+        subject: data.subject,
+        status: "OPEN",
+      },
+    });
+
+    await tx.quoteMessage.create({
+      data: {
+        threadId: thread.id,
+        authorId: data.senderId,
+        authorRole: "client",
+        body: data.initialMessage,
+      },
+    });
+
+    await emitRequestEvent(prisma, {
+      requestId: thread.id,
+      eventType: 'REQUEST_CREATED',
+      actorUserId: data.senderId,
+      metadata: {
+        subject: data.subject,
+        providerId: data.providerId,
+        catalogItemId: data.catalogItemId,
+      },
+      tx,
+    });
+
+    log.info('Thread created with REQUEST_CREATED event', {
+      threadId: thread.id,
       senderId: data.senderId,
       providerId: data.providerId,
-      catalogItemId: data.catalogItemId || null,
-      subject: data.subject,
-      status: "OPEN",
-    },
+    });
+
+    return thread;
   });
 
-  await prisma.quoteMessage.create({
-    data: {
-      threadId: thread.id,
-      authorId: data.senderId,
-      authorRole: "client",
-      body: data.initialMessage,
-    },
-  });
-
-  const full = await getThreadById(thread.id);
+  const full = await getThreadById(result.id);
   return full!;
 }
 
@@ -204,29 +230,53 @@ export async function addMessage(threadId: string, data: {
   authorRole: "client" | "provider" | "system";
   body: string;
 }): Promise<any> {
-  const message = await prisma.quoteMessage.create({
-    data: {
-      threadId,
-      authorId: data.authorId,
-      authorRole: data.authorRole,
-      body: data.body,
-    },
-  });
-
-  // Update thread status if it's the first message
-  const thread = await prisma.quoteThread.findUnique({
-    where: { id: threadId },
-    select: { status: true },
-  });
-
-  if (thread?.status === "OPEN") {
-    await prisma.quoteThread.update({
-      where: { id: threadId },
-      data: { status: "IN_CONVERSATION" },
+  const result = await prisma.$transaction(async (tx) => {
+    const message = await tx.quoteMessage.create({
+      data: {
+        threadId,
+        authorId: data.authorId,
+        authorRole: data.authorRole,
+        body: data.body,
+      },
     });
-  }
 
-  return message;
+    const thread = await tx.quoteThread.findUnique({
+      where: { id: threadId },
+      select: { 
+        status: true, 
+        messages: { 
+          where: { authorRole: 'provider' },
+          select: { id: true } 
+        } 
+      },
+    });
+
+    if (thread?.status === "OPEN") {
+      await tx.quoteThread.update({
+        where: { id: threadId },
+        data: { status: "IN_CONVERSATION" },
+      });
+    }
+
+    if (data.authorRole === 'provider' && thread && thread.messages.length === 1) {
+      await emitRequestEvent(prisma, {
+        requestId: threadId,
+        eventType: 'PROVIDER_RESPONDED',
+        actorUserId: data.authorId,
+        metadata: { firstResponse: true },
+        tx,
+      });
+
+      log.info('Provider first response event emitted', {
+        threadId,
+        providerId: data.authorId,
+      });
+    }
+
+    return message;
+  });
+
+  return result;
 }
 
 export async function updateThread(threadId: string, data: {

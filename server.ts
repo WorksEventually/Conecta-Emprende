@@ -79,9 +79,10 @@ import {
   addMessage,
   updateThread,
 } from "./src/lib/quotes-service";
+import { emitRequestEvent } from "./src/lib/request-events-service.js";
+import { createLogger } from "./src/lib/logger.js";
 
-
-
+const log = createLogger('Server');
 function normalizeAvailability(value: unknown): Availability {
   return Object.values(Availability).includes(value as Availability) ? value as Availability : Availability.DISPONIBLE;
 }
@@ -1102,9 +1103,6 @@ async function startServer() {
       if (mappedRole !== role) return res.status(403).json({ success: false, error: `Tu rol es ${mappedRole}, no ${role}` });
       if (thread.workflow_phase === "CLOSED") return res.status(400).json({ success: false, error: "Esta solicitud ya está cerrada" });
 
-      // P2 §4.5 / §8.2: at or after the deadline, timeout resolution wins and
-      // late confirmations must not be accepted. The cron job closes the thread
-      // with the corresponding unilateral outcome.
       if (
         thread.workflow_phase === "COMPLETION_PENDING" &&
         thread.completionDeadline &&
@@ -1116,41 +1114,68 @@ async function startServer() {
         });
       }
 
-      const now = new Date();
-      const deadline = new Date(now.getTime() + 72 * 60 * 60 * 1000);
-      const updateData: any = { workflow_phase: "COMPLETION_PENDING", completionDeadline: deadline };
+      await prisma.$transaction(async (tx) => {
+        const now = new Date();
+        const deadline = new Date(now.getTime() + 72 * 60 * 60 * 1000);
+        const updateData: any = { workflow_phase: "COMPLETION_PENDING", completionDeadline: deadline };
 
-      if (role === "REQUESTER") updateData.confirmedByRequesterAt = now;
-      else updateData.confirmedByProviderAt = now;
+        if (role === "REQUESTER") updateData.confirmedByRequesterAt = now;
+        else updateData.confirmedByProviderAt = now;
 
-      const otherConfirmed =
-        (role === "REQUESTER" && thread.confirmedByProviderAt) ||
-        (role === "PROVIDER" && thread.confirmedByRequesterAt);
+        const otherConfirmed =
+          (role === "REQUESTER" && thread.confirmedByProviderAt) ||
+          (role === "PROVIDER" && thread.confirmedByRequesterAt);
 
-      if (otherConfirmed) {
-        updateData.workflow_phase = "CLOSED";
-        updateData.closure_outcome = "BILATERAL";
-        updateData.completedAt = now;
-      }
+        if (otherConfirmed) {
+          updateData.workflow_phase = "CLOSED";
+          updateData.closure_outcome = "BILATERAL";
+          updateData.completedAt = now;
+        }
 
-      updateData.status = otherConfirmed ? "COMPLETED" : "IN_CONVERSATION";
+        updateData.status = otherConfirmed ? "COMPLETED" : "IN_CONVERSATION";
 
-      await prisma.quoteThread.update({ where: { id }, data: updateData });
-      const message = otherConfirmed
+        await tx.quoteThread.update({ where: { id }, data: updateData });
+
+        if (otherConfirmed) {
+          await emitRequestEvent(prisma, {
+            requestId: id,
+            eventType: 'COMPLETION_CONFIRMED',
+            actorUserId: userId,
+            completionCycleNo: thread.cycleNo || 0,
+            metadata: { bilateralCompletion: true },
+            tx,
+          });
+
+          log.info('Bilateral completion confirmed', { threadId: id, userId });
+        } else {
+          await emitRequestEvent(prisma, {
+            requestId: id,
+            eventType: 'COMPLETION_REQUESTED',
+            actorUserId: userId,
+            completionCycleNo: thread.cycleNo || 0,
+            metadata: { actor: role === "REQUESTER" ? "requester" : "provider" },
+            tx,
+          });
+
+          log.info('Completion requested', { threadId: id, userId, role });
+        }
+      });
+
+      const message = thread.confirmedByRequesterAt || thread.confirmedByProviderAt
         ? "¡Trabajo confirmado! Ambas partes confirmaron el cierre."
         : "Confirmación registrada. Se activó ventana de 72h para que la otra parte confirme.";
 
-      if (otherConfirmed) {
+      if (thread.confirmedByRequesterAt && thread.confirmedByProviderAt) {
         recalculateProviderTrustScore(thread.providerId)
-          .catch((err) => console.error("[TrustScore] Recalc failed:", err));
+          .catch((err) => log.error("[TrustScore] Recalc failed", { error: err }));
         
         analyzeProviderRisk(thread.providerId)
-          .catch((err) => console.error("[RiskTelemetry] Analysis failed:", err));
+          .catch((err) => log.error("[RiskTelemetry] Analysis failed", { error: err }));
       }
 
       res.json({ success: true, message });
     } catch (error) {
-      console.error("Complete quote error:", error);
+      log.error("Complete quote error", { error });
       res.status(500).json({ success: false, error: "Error al confirmar cierre" });
     }
   });
@@ -1187,14 +1212,34 @@ async function startServer() {
         acceptedBy: userId,
       };
 
-      const updated = await prisma.quoteThread.update({
-        where: { id },
-        data: { acceptedQuotation },
+      await prisma.$transaction(async (tx) => {
+        await tx.quoteThread.update({
+          where: { id },
+          data: { acceptedQuotation },
+        });
+
+        await emitRequestEvent(prisma, {
+          requestId: id,
+          eventType: 'QUOTE_ACCEPTED',
+          actorUserId: userId,
+          metadata: {
+            price: thread.quotedPriceLabel,
+            delivery: thread.quotedDeliveryTime,
+          },
+          tx,
+        });
+
+        log.info('Quote accepted event emitted', { threadId: id, userId });
       });
 
-      res.json({ success: true, acceptedQuotation: updated.acceptedQuotation });
+      const updated = await prisma.quoteThread.findUnique({
+        where: { id },
+        select: { acceptedQuotation: true },
+      });
+
+      res.json({ success: true, acceptedQuotation: updated?.acceptedQuotation });
     } catch (error) {
-      console.error("Accept quotation error:", error);
+      log.error("Accept quotation error", { error });
       res.status(500).json({ success: false, error: "Error al aceptar cotización" });
     }
   });
