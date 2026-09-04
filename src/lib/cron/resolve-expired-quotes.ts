@@ -56,8 +56,10 @@ export async function resolveExpiredQuotes() {
         legacyStatus = "CLOSED";
     }
 
-    await prisma.$transaction(async (tx) => {
-      try {
+    let wasResolved = false;
+
+    try {
+      await prisma.$transaction(async (tx) => {
         await updateThreadWithLocking(
           thread.id,
           thread.version,
@@ -69,55 +71,60 @@ export async function resolveExpiredQuotes() {
           },
           tx
         );
-      } catch (error) {
-        if (error instanceof ConcurrencyError) {
-          log.warn('Cron detected concurrent update, skipping thread', {
-            threadId: thread.id,
-            version: thread.version,
-          });
-          return;
-        }
-        throw error;
-      }
 
-      const timeoutEvent = await emitRequestEvent(prisma, {
-        requestId: thread.id,
-        eventType: 'COMPLETION_TIMEOUT',
-        completionCycleNo: thread.cycleNo || 0,
-        metadata: {
-          outcome: closure_outcome,
-          deadline: thread.completionDeadline?.toISOString(),
-          confirmedByRequester: !!confirmedByRequesterAt,
-          confirmedByProvider: !!confirmedByProviderAt,
-        },
-        tx,
-      });
-
-      if (closure_outcome === ClosureOutcome.BILATERAL) {
-        await createReputationEvidence(prisma, {
-          providerId: thread.providerId,
+        const timeoutEvent = await emitRequestEvent(prisma, {
           requestId: thread.id,
-          evidenceType: 'BILATERAL_COMPLETION',
-          evidenceWeight: 1.0,
-          sourceEventId: timeoutEvent.id,
+          eventType: 'COMPLETION_TIMEOUT',
+          completionCycleNo: thread.cycleNo || 0,
+          metadata: {
+            outcome: closure_outcome,
+            deadline: thread.completionDeadline?.toISOString(),
+            confirmedByRequester: !!confirmedByRequesterAt,
+            confirmedByProvider: !!confirmedByProviderAt,
+          },
           tx,
         });
-      }
 
-      log.info('Thread closed by timeout', { 
-        threadId: thread.id, 
-        outcome: closure_outcome 
+        if (closure_outcome === ClosureOutcome.BILATERAL) {
+          await createReputationEvidence(prisma, {
+            providerId: thread.providerId,
+            requestId: thread.id,
+            evidenceType: 'BILATERAL_COMPLETION',
+            evidenceWeight: 1.0,
+            sourceEventId: timeoutEvent.id,
+            tx,
+          });
+        }
+
+        log.info('Thread closed by timeout', { 
+          threadId: thread.id, 
+          outcome: closure_outcome 
+        });
       });
-    });
 
-    if (closure_outcome === ClosureOutcome.BILATERAL) {
-      recalculateProviderTrustScore(thread.providerId)
-        .catch((err) => log.error('TrustScore cron recalc failed', { error: err }));
-      
-      analyzeProviderRisk(thread.providerId)
-        .catch((err) => log.error('RiskTelemetry cron analysis failed', { error: err }));
+      wasResolved = true;
+
+      if (closure_outcome === ClosureOutcome.BILATERAL) {
+        recalculateProviderTrustScore(thread.providerId)
+          .catch((err) => log.error('TrustScore cron recalc failed', { error: err }));
+        
+        analyzeProviderRisk(thread.providerId)
+          .catch((err) => log.error('RiskTelemetry cron analysis failed', { error: err }));
+      }
+    } catch (error) {
+      if (error instanceof ConcurrencyError) {
+        log.warn('Cron detected concurrent update, skipping thread', {
+          threadId: thread.id,
+          version: thread.version,
+        });
+      } else {
+        throw error;
+      }
     }
-    resolved++;
+
+    if (wasResolved) {
+      resolved++;
+    }
   }
 
   log.info('Resolved expired quotes', { resolved });
