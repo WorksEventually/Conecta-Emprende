@@ -88,6 +88,8 @@ model User {
   providerStatusUpdates Provider[]           @relation("ProviderStatusUpdatedBy")
   escalatedRiskReports  RiskReport[]         @relation("RiskReportEscalatedBy")
   resolvedRiskReports   RiskReport[]         @relation("RiskReportResolvedBy")
+  requestEventActions   RequestEvent[]       @relation("RequestEventActions")
+  invalidatedReputationEvents ReputationEvent[] @relation("ReputationEventInvalidator")
 }
 
 model RoleAssignment {
@@ -282,6 +284,7 @@ model Provider {
   categoryLinks       ProviderCategory[]
   trustScoreSnapshots TrustScoreSnapshot[]
   riskReports         RiskReport[]
+  reputationEvents    ReputationEvent[]
 
   @@index([city])
   @@index([cityId])
@@ -677,10 +680,15 @@ model QuoteThread {
   confirmedByProviderAt  DateTime?
   completedAt            DateTime?
 
-  messages    QuoteMessage[]
-  quoteOffers QuoteOffer[]
-  reviews     Review[]       @relation("RequestReviews")
-  createdAt   DateTime       @default(now())
+  version Int @default(1)
+  cycleNo Int @default(0)
+
+  messages         QuoteMessage[]
+  quoteOffers      QuoteOffer[]
+  reviews          Review[]            @relation("RequestReviews")
+  requestEvents    RequestEvent[]
+  reputationEvents ReputationEvent[]   @relation("RequestReputationEvents")
+  createdAt        DateTime            @default(now())
 
   @@index([senderId])
   @@index([providerId])
@@ -720,6 +728,59 @@ model QuoteMessage {
   createdAt      DateTime    @default(now())
 
   @@index([threadId])
+}
+
+model RequestEvent {
+  id                 String           @id @default(cuid())
+  requestId          String
+  request            QuoteThread      @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  eventType          RequestEventType
+  actorUserId        String?
+  actor              User?            @relation("RequestEventActions", fields: [actorUserId], references: [id], onDelete: SetNull)
+  completionCycleNo  Int              @default(0)
+  idempotencyKey     String           @unique
+  metadataJson       Json?
+  occurredAt         DateTime         @default(now())
+  createdAt          DateTime         @default(now())
+
+  reputationEvents   ReputationEvent[]
+
+  @@index([requestId, occurredAt])
+  @@index([eventType])
+  @@index([idempotencyKey])
+}
+
+enum EvidenceType {
+  BILATERAL_COMPLETION
+  UNILATERAL_REVIEW_QUALIFIED
+  UNILATERAL_REVIEW_UNQUALIFIED
+  CONTACT_CONFIRMATION
+  PENALTY_SUSPICIOUS_ACTIVITY
+  PENALTY_POLICY_VIOLATION
+}
+
+model ReputationEvent {
+  id                   String        @id @default(cuid())
+  providerId           String
+  provider             Provider      @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  requestId            String?
+  request              QuoteThread?  @relation("RequestReputationEvents", fields: [requestId], references: [id], onDelete: SetNull)
+  evidenceType         EvidenceType
+  evidenceWeight       Float
+  sourceEventId        String?
+  sourceEvent          RequestEvent? @relation(fields: [sourceEventId], references: [id], onDelete: SetNull)
+  algorithmVersion     String        @default("trust-v2.0.0")
+  invalidatedAt        DateTime?
+  invalidatedByAdminId String?
+  invalidatedByAdmin   User?         @relation("ReputationEventInvalidator", fields: [invalidatedByAdminId], references: [id], onDelete: SetNull)
+  invalidationReason   String?       @db.Text
+  createdAt            DateTime      @default(now())
+
+  @@unique([requestId, evidenceType])
+  @@index([providerId, createdAt])
+  @@index([evidenceType])
+  @@index([algorithmVersion])
+  @@index([sourceEventId])
 }
 
 // ──────────────────────────────────────────────────────────
@@ -776,4 +837,21 @@ enum ModerationState {
   CLEAN // Sin flags
   FLAGGED // Bajo revisión de moderación
   RESTRICTED // Restringido por moderación
+}
+
+enum RequestEventType {
+  REQUEST_CREATED
+  PROVIDER_RESPONDED
+  QUOTE_ACCEPTED
+  COMPLETION_REQUESTED
+  COMPLETION_CONFIRMED
+  COMPLETION_TIMEOUT
+  CANCELLED_BY_REQUESTER
+  CANCELLED_BY_PROVIDER
+  MODERATION_FLAG
+  MODERATION_CLOSURE
+  REOPENED
+  MESSAGE_SENT
+  DEADLINE_EXTENDED
+  ADMIN_OVERRIDE
 }
