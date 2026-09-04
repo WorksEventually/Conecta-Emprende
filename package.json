@@ -22,7 +22,8 @@
     "test:risk-integration": "tsx scripts/test_risk_integration_e2e.ts",
     "test:request-events": "tsx scripts/test_request_events.ts",
     "test:reputation-events": "tsx scripts/test_reputation_events.ts",
-    "test:concurrency": "tsx scripts/test_concurrency.ts"
+    "test:concurrency": "tsx scripts/test_concurrency.ts",
+    "test:sprint6": "tsx scripts/test_sprint6_state_machine.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
