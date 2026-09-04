@@ -80,6 +80,7 @@ import {
   updateThread,
   updateThreadWithLocking,
   ConcurrencyError,
+  rejectCompletion,
 } from "./src/lib/quotes-service";
 import { emitRequestEvent } from "./src/lib/request-events-service.js";
 import { createReputationEvidence } from "./src/lib/reputation-events-service.js";
@@ -1196,6 +1197,10 @@ async function startServer() {
 
         updateData.status = otherConfirmed ? "COMPLETED" : "IN_CONVERSATION";
 
+        if (!thread.completionInitiatorUserId) {
+          updateData.completionInitiatorUserId = userId;
+        }
+
         if (version !== undefined) {
           await updateThreadWithLocking(id, version, updateData, tx);
         } else {
@@ -1327,6 +1332,41 @@ async function startServer() {
     } catch (error: any) {
       log.error('Error declining request', { error: error.message });
       res.status(500).json({ error: 'Error al declinar solicitud' });
+    }
+  });
+
+  app.post("/api/quotes/:id/reject-completion", authenticate, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { note } = req.body;
+      const { userId } = req.user;
+
+      const thread = await prisma.quoteThread.findUnique({
+        where: { id },
+        select: { senderId: true, providerId: true }
+      });
+
+      if (!thread) {
+        return res.status(404).json({ error: 'Thread no encontrado' });
+      }
+
+      const isParticipant = userId === thread.senderId || userId === thread.providerId;
+      if (!isParticipant) {
+        return res.status(403).json({ error: 'No sos parte de esta conversación' });
+      }
+
+      await rejectCompletion(id, userId, note);
+
+      res.json({ success: true });
+    } catch (error: any) {
+      if (error.message.includes('esperar') || error.message.includes('mensaje')) {
+        return res.status(400).json({ error: error.message });
+      }
+      if (error.message.includes('no puede rechazar')) {
+        return res.status(403).json({ error: error.message });
+      }
+      log.error('Error rejecting completion', { error: error.message });
+      res.status(500).json({ error: 'Error al rechazar cierre' });
     }
   });
 
