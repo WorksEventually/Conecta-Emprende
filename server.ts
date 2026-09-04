@@ -168,6 +168,63 @@ async function startServer() {
     next();
   };
 
+  // === IDEMPOTENCY MIDDLEWARE ===
+  interface IdempotencyCache {
+    response: any;
+    statusCode: number;
+    timestamp: number;
+  }
+
+  const idempotencyStore = new Map<string, IdempotencyCache>();
+  const IDEMPOTENCY_TTL_MS = 24 * 60 * 60 * 1000;
+
+  function cleanupExpiredIdempotencyKeys() {
+    const now = Date.now();
+    for (const [key, value] of idempotencyStore.entries()) {
+      if (now - value.timestamp > IDEMPOTENCY_TTL_MS) {
+        idempotencyStore.delete(key);
+      }
+    }
+  }
+
+  setInterval(cleanupExpiredIdempotencyKeys, 60 * 60 * 1000);
+
+  const idempotencyMiddleware = (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    const idempotencyKey = req.headers['idempotency-key'] as string;
+    
+    if (!idempotencyKey) {
+      return next();
+    }
+
+    const cached = idempotencyStore.get(idempotencyKey);
+    if (cached) {
+      log.info('Idempotent request detected, returning cached response', {
+        key: idempotencyKey,
+        method: req.method,
+        path: req.path,
+      });
+      return res.status(cached.statusCode).json(cached.response);
+    }
+
+    const originalJson = res.json.bind(res);
+    res.json = function(body: any) {
+      if (res.statusCode >= 200 && res.statusCode < 300) {
+        idempotencyStore.set(idempotencyKey, {
+          response: body,
+          statusCode: res.statusCode,
+          timestamp: Date.now(),
+        });
+        log.info('Cached idempotent response', {
+          key: idempotencyKey,
+          statusCode: res.statusCode,
+        });
+      }
+      return originalJson(body);
+    };
+
+    next();
+  };
+
   async function getProviderOwnedByUser(providerId: string, userId: string) {
     return prisma.provider.findFirst({
       where: { id: providerId, userId },
@@ -904,7 +961,7 @@ async function startServer() {
   });
 
   // POST Request Quote — creates a new quote thread
-  app.post("/api/quotes", authenticate, async (req, res) => {
+  app.post("/api/quotes", authenticate, idempotencyMiddleware, async (req, res) => {
     try {
       const parsed = quoteRequestSchema.safeParse(req.body);
 
@@ -1088,7 +1145,7 @@ async function startServer() {
     }
   });
 
-  app.patch("/api/quotes/:id/complete", authenticate, async (req, res) => {
+  app.patch("/api/quotes/:id/complete", authenticate, idempotencyMiddleware, async (req, res) => {
     try {
       const { id } = req.params;
       const { userId } = req.user;
@@ -2039,7 +2096,7 @@ async function startServer() {
   });
 
   // POST Create Review
-  app.post("/api/reviews", authenticate, async (req, res) => {
+  app.post("/api/reviews", authenticate, idempotencyMiddleware, async (req, res) => {
     try {
       const parsed = reviewCreateSchema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ success: false, error: "Los datos de la reseña son inválidos", details: parsed.error.issues });
