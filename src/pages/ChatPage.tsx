@@ -397,16 +397,8 @@ export default function ChatPage() {
           )}
 
           {thread.closure_outcome !== null ? (
-            <div className="message-composer" style={{ 
-              padding: '1rem', 
-              backgroundColor: '#f3f4f6', 
-              borderRadius: '0.5rem',
-              textAlign: 'center',
-              color: '#6b7280'
-            }}>
-              <p style={{ margin: 0, fontWeight: 500 }}>
-                Esta conversación está cerrada. No se pueden enviar más mensajes.
-              </p>
+            <div className="message-composer chat-closed-notice">
+              <p>Esta conversación está cerrada. No se pueden enviar más mensajes.</p>
             </div>
           ) : (
             <form className="message-composer" onSubmit={handleSubmit}>
