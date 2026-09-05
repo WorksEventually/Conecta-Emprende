@@ -1,5 +1,5 @@
 {
-  "name": "Conecta Emprende AI",
+  "name": "TradeArc",
   "description": "Plataforma para conectar talento formal e informal con inteligencia artificial en Nicaragua",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]

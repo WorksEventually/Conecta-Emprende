@@ -1,6 +1,6 @@
-# Git Workflow — Conecta Emprende AI
+# Git Workflow — TradeArc
 
-**Proyecto:** Conecta Emprende AI  
+**Proyecto:** TradeArc
 **Hackathon Nicaragua 2026**  
 **Categoría:** Avanzado  
 
@@ -165,5 +165,5 @@ El repositorio está configurado para que el camino normal de cualquier cambio s
 
 ---
 
-**Documento mantenido por el equipo de Conecta Emprende AI**  
+**Documento mantenido por el equipo de TradeArc**
 Hackathon Nicaragua 2026

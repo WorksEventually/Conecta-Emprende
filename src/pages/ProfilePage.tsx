@@ -92,46 +92,47 @@ export default function ProfilePage() {
   return (
     <div className="max-w-4xl mx-auto p-6 md:p-12 h-full overflow-y-auto w-full">
       <div className="mb-8">
-        <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">Mi Perfil</h1>
-        <p className="text-slate-500 font-medium mt-2">Gestiona tu información pública, servicios y ubicación de tu negocio.</p>
+        <h1 className="text-3xl font-bold text-[#333333] tracking-tight">Mi Perfil</h1>
+        <p className="text-[rgba(51,51,51,0.72)] font-medium mt-2">Gestiona tu información pública, servicios y ubicación de tu negocio.</p>
       </div>
 
       <div className="space-y-8">
         {/* Profile Card */}
-        <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
-          <div className="h-28 bg-gradient-to-r from-blue-600 to-indigo-600"></div>
+        <div className="bg-white rounded-3xl border border-[rgba(26,60,110,0.18)] shadow-sm overflow-hidden">
+          <div className="h-28 bg-gradient-to-r from-[#1A3C6E] to-[#00D4FF]"></div>
           <div className="px-8 pb-8 relative">
             <div className="absolute -top-12 sm:relative sm:-top-16">
-              <div className="w-24 h-24 bg-white rounded-2xl flex items-center justify-center border-4 border-white shadow-md text-3xl font-extrabold text-slate-800">
+              <div className="w-24 h-24 bg-white rounded-2xl flex items-center justify-center border-4 border-white shadow-md text-3xl font-bold text-[#333333]">
                 {formData.displayName.charAt(0)}
               </div>
             </div>
             
             <div className="sm:-mt-4">
-              <h2 className="text-xl font-bold text-slate-900 mb-6">Información General</h2>
+              <h2 className="text-xl font-bold text-[#333333] mb-6">Información General</h2>
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
-                  <label className="block text-sm font-bold text-slate-700 mb-2">Nombre del Negocio</label>
+                  <label className="block text-sm font-bold text-[#333333] mb-2">Nombre del Negocio</label>
                   <div className="relative">
-                    <Store className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <Store className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[rgba(51,51,51,0.72)]" />
                     <input 
                       type="text" 
                       value={formData.displayName}
                       onChange={e => setFormData({ ...formData, displayName: e.target.value })}
-                      className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:bg-white focus:outline-none transition-all text-sm font-medium text-slate-900"
+                      maxLength={80}
+                      className="w-full pl-10 pr-4 py-3 bg-[#F8F9FA] border border-[rgba(26,60,110,0.18)] rounded-xl focus:ring-2 focus:ring-[#00D4FF]/25 focus:bg-white focus:outline-none transition-all text-sm font-medium text-[#333333]"
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-sm font-bold text-slate-700 mb-2">Categoría Principal</label>
+                  <label className="block text-sm font-bold text-[#333333] mb-2">Categoría Principal</label>
                   <div className="relative">
-                    <Activity className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <Activity className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[rgba(51,51,51,0.72)]" />
                     <select 
                       value={formData.category}
                       onChange={e => setFormData({ ...formData, category: e.target.value })}
-                      className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:bg-white focus:outline-none transition-all text-sm font-medium text-slate-900 appearance-none"
+                      className="w-full pl-10 pr-4 py-3 bg-[#F8F9FA] border border-[rgba(26,60,110,0.18)] rounded-xl focus:ring-2 focus:ring-[#00D4FF]/25 focus:bg-white focus:outline-none transition-all text-sm font-medium text-[#333333] appearance-none"
                     >
                       <option value="Diseño Gráfico">Diseño Gráfico</option>
                       <option value="Desarrollo Web">Desarrollo Web</option>
@@ -143,13 +144,13 @@ export default function ProfilePage() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-bold text-slate-700 mb-2">Ciudad / Departamento</label>
+                  <label className="block text-sm font-bold text-[#333333] mb-2">Ciudad / Departamento</label>
                   <div className="relative">
-                    <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[rgba(51,51,51,0.72)]" />
                     <select 
                       value={formData.city}
                       onChange={e => setFormData({ ...formData, city: e.target.value })}
-                      className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:bg-white focus:outline-none transition-all text-sm font-medium text-slate-900 appearance-none"
+                      className="w-full pl-10 pr-4 py-3 bg-[#F8F9FA] border border-[rgba(26,60,110,0.18)] rounded-xl focus:ring-2 focus:ring-[#00D4FF]/25 focus:bg-white focus:outline-none transition-all text-sm font-medium text-[#333333] appearance-none"
                     >
                       <option value="Managua">Managua</option>
                       <option value="León">León</option>
@@ -160,25 +161,26 @@ export default function ProfilePage() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-bold text-slate-700 mb-2">Teléfono (WhatsApp)</label>
+                  <label className="block text-sm font-bold text-[#333333] mb-2">Teléfono (WhatsApp)</label>
                   <div className="relative">
-                    <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[rgba(51,51,51,0.72)]" />
                     <input 
                       type="text" 
                       value={formData.phone}
                       onChange={e => setFormData({ ...formData, phone: e.target.value })}
-                      className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:bg-white focus:outline-none transition-all text-sm font-medium text-slate-900"
+                      maxLength={30}
+                      className="w-full pl-10 pr-4 py-3 bg-[#F8F9FA] border border-[rgba(26,60,110,0.18)] rounded-xl focus:ring-2 focus:ring-[#00D4FF]/25 focus:bg-white focus:outline-none transition-all text-sm font-medium text-[#333333]"
                     />
                   </div>
                 </div>
 
                 <div className="col-span-1 md:col-span-2">
                   <div className="flex justify-between items-end mb-2">
-                    <label className="block text-sm font-bold text-slate-700">Biografía / Acerca de</label>
+                    <label className="block text-sm font-bold text-[#333333]">Biografía / Acerca de</label>
                     <button 
                       onClick={handleEnhanceBio}
                       disabled={isEnhancing || formData.bio.length < 10}
-                      className="text-xs font-bold bg-purple-100 text-purple-700 hover:bg-purple-200 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 disabled:opacity-50"
+                      className="text-xs font-bold bg-[#F9ECD9] text-[#1A3C6E] hover:bg-[#F9ECD9] px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 disabled:opacity-50"
                     >
                       {showEnhanceSuccess ? (
                          <><Check className="w-3.5 h-3.5" /> ¡Mejorado!</>
@@ -191,7 +193,8 @@ export default function ProfilePage() {
                     value={formData.bio}
                     onChange={e => setFormData({ ...formData, bio: e.target.value })}
                     rows={4}
-                    className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:bg-white focus:outline-none transition-all text-[15px] leading-relaxed font-medium text-slate-900 resize-none"
+                    maxLength={2000}
+                    className="w-full p-4 bg-[#F8F9FA] border border-[rgba(26,60,110,0.18)] rounded-xl focus:ring-2 focus:ring-[#00D4FF]/25 focus:bg-white focus:outline-none transition-all text-[15px] leading-relaxed font-medium text-[#333333] resize-none"
                   ></textarea>
                 </div>
               </div>
@@ -213,18 +216,18 @@ export default function ProfilePage() {
 
         {/* Stats */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-          <div className="bg-slate-900 text-white p-6 rounded-3xl border border-slate-800 shadow-xl">
-             <div className="text-slate-400 text-sm font-bold uppercase tracking-wider mb-2">Total Cotizaciones</div>
-             <div className="text-3xl font-extrabold">{quotes.length}</div>
+          <div className="bg-[#1A3C6E] text-white p-6 rounded-3xl border border-[#1A3C6E] shadow-xl">
+             <div className="text-[rgba(51,51,51,0.72)] text-sm font-bold uppercase tracking-wider mb-2">Total Cotizaciones</div>
+             <div className="text-3xl font-bold">{quotes.length}</div>
           </div>
-           <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
-             <div className="text-slate-500 text-sm font-bold uppercase tracking-wider mb-2">Trust Score</div>
-             <div className="text-3xl font-extrabold text-[var(--brand)]">{provider?.score || 0}</div>
+           <div className="bg-white p-6 rounded-3xl border border-[rgba(26,60,110,0.18)] shadow-sm">
+             <div className="text-[rgba(51,51,51,0.72)] text-sm font-bold uppercase tracking-wider mb-2">Trust Score</div>
+             <div className="text-3xl font-bold text-[var(--brand)]">{provider?.score || 0}</div>
           </div>
-          <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
-             <div className="text-slate-500 text-sm font-bold uppercase tracking-wider mb-2">Perfil comercial</div>
-             <div className="text-sm font-extrabold text-slate-900 mt-2 flex items-center gap-2">
-               <Building className="w-5 h-5 text-green-500" /> Información pública activa
+          <div className="bg-white p-6 rounded-3xl border border-[rgba(26,60,110,0.18)] shadow-sm">
+             <div className="text-[rgba(51,51,51,0.72)] text-sm font-bold uppercase tracking-wider mb-2">Perfil comercial</div>
+             <div className="text-sm font-bold text-[#333333] mt-2 flex items-center gap-2">
+               <Building className="w-5 h-5 text-[#1B6E3A]" /> Información pública activa
              </div>
           </div>
         </div>

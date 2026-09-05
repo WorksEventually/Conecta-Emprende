@@ -1,10 +1,11 @@
 import React, { useEffect, useState, type ErrorInfo, type ReactNode } from "react";
 import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
-import { ChevronDown, Flag, Home, Menu, MessageCircle, Search, Settings, ShieldCheck, Store, UserRound, X, LogIn } from "lucide-react";
+import { ChevronDown, Flag, Home, Menu, MessageCircle, Search, Settings, ShieldCheck, UserRound, X, LogIn } from "lucide-react";
 import { useToastStore } from "../../stores/toast-store";
 import { useAuthStore } from "../../stores/auth-store";
 import { useQuotesStore } from "../../stores/quotes-store";
 import { getRoleLabel } from "../../lib/identity";
+import logoUrl from "../../assets/tradearc-lockup.svg";
 
 const nav = [
   { to: "/", label: "Inicio", icon: Home, end: true },
@@ -84,9 +85,8 @@ export default function RootLayout() {
   return (
     <div className="app-shell">
       <header className="topbar">
-        <Link to="/" className="brand" aria-label="Conecta Emprende, inicio">
-          <span className="brand-mark"><Store /></span>
-          <span>Conecta <strong>Emprende</strong></span>
+        <Link to="/" className="brand" aria-label="TradeArc, inicio">
+          <img className="brand-lockup" src={logoUrl} alt="TradeArc" />
         </Link>
 
         <nav className={open ? "main-nav open" : "main-nav"}>
@@ -111,7 +111,7 @@ export default function RootLayout() {
               <button className="account-button" onClick={() => setAccount(!account)} aria-expanded={account} aria-haspopup="menu">
                 <span>{initials}</span>
                 <span className="account-copy">
-                  <strong>{displayName}</strong>
+                  <strong className="text-truncate" title={displayName}>{displayName}</strong>
                   <small>{accountRoleLabel}</small>
                 </span>
                 <ChevronDown />

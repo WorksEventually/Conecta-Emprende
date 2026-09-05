@@ -2,19 +2,19 @@
 // Chat helpers — avatar gradients, date formatting, message grouping
 // ============================================================
 
-// Deterministic gradient avatar colors based on a name hash.
-// Same name → same gradient. Inspired by Telegram/Slack avatars.
+// Deterministic TradeArc avatar colors based on a name hash.
+// Same name → same palette-approved combination.
 const AVATAR_GRADIENTS: Array<{ from: string; to: string }> = [
-  { from: "#3b82f6", to: "#1d4ed8" }, // blue
-  { from: "#8b5cf6", to: "#6d28d9" }, // violet
-  { from: "#ec4899", to: "#be185d" }, // pink
-  { from: "#f59e0b", to: "#b45309" }, // amber
-  { from: "#10b981", to: "#047857" }, // emerald
-  { from: "#06b6d4", to: "#0e7490" }, // cyan
-  { from: "#ef4444", to: "#b91c1c" }, // red
-  { from: "#6366f1", to: "#4338ca" }, // indigo
-  { from: "#84cc16", to: "#4d7c0f" }, // lime
-  { from: "#f97316", to: "#c2410c" }, // orange
+  { from: "#1A3C6E", to: "#132D52" },
+  { from: "#1A3C6E", to: "#1A3C6E" },
+  { from: "#00D4FF", to: "#1A3C6E" },
+  { from: "#1A3C6E", to: "#00BFEE" },
+  { from: "#1B6E3A", to: "#1A3C6E" },
+  { from: "#1A3C6E", to: "#00D4FF" },
+  { from: "#B42318", to: "#1A3C6E" },
+  { from: "#1A3C6E", to: "#1A3C6E" },
+  { from: "#F9ECD9", to: "#1A3C6E" },
+  { from: "#8A5A00", to: "#1A3C6E" },
 ];
 
 function hashString(str: string): number {

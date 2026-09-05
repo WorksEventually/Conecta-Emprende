@@ -1,6 +1,6 @@
 # Constraints
 
-Technical constraints and reserved fields for the Conecta Emprende AI (TradeArc) MVP.
+Technical constraints and reserved fields for the TradeArc MVP.
 
 ## Reserved fields
 

@@ -1,26 +1,52 @@
-# Design System
+# TradeArc Design System
 
-## Direction
+## Dirección
 
-Interfaz de producto clara y práctica, pensada para uso diurno en teléfonos y computadoras de negocios pequeños. La identidad local se expresa mediante lenguaje y datos reales, no decoración folclórica.
+Interfaz de producto clara, confiable y práctica para emprendedores, MIPYMES y proveedores de Nicaragua. La identidad local se expresa mediante lenguaje y datos reales, no mediante colores decorativos fuera de la marca.
 
-## Color
+## Paleta oficial
 
-- Primario: azul profundo `#001F3F`, usado en navegación global, encabezados principales y elementos de marca.
-- Secundario: gris plata `#C0C0C0`, usado en bordes, separadores, contornos y estados inactivos.
-- Terciario: azul corporativo intermedio `#004080`, reservado para llamadas a la acción, botones primarios y enlaces activos.
-- Neutro: gris muy claro `#F5F5F5`, usado como fondo principal para reducir fatiga visual y mantener la interfaz limpia.
-- Superficie: `#fbfbfb`, una variación mínima del neutro para diferenciar tarjetas y formularios sin introducir una nueva familia cromática.
-- Estados de error: rojo terroso `oklch(52% .16 28)`, conservado solo para accesibilidad y comunicación de errores.
+- Azul TradeArc, primario: `#1A3C6E`
+- Cian TradeArc, acento y foco: `#00D4FF`
+- Gris Pizarra, texto principal: `#333333`
+- Neutro Claro, fondo: `#F8F9FA`
+- Blanco, texto sobre estados y superficies: `#FFFFFF`
+- Dorado TradeArc: `#F9ECD9`, único dorado permitido para medallas, advertencias suaves, progreso intermedio y acentos de énfasis documentados en la auditoría de color.
 
-## Typography
+### Estados interactivos
 
-Inter o Segoe UI con escala compacta de producto. Títulos usan peso y contraste, no tipografía decorativa. El cuerpo se limita a aproximadamente 70 caracteres cuando es prosa.
+- Hover primario: `#132D52`
+- Activo primario: `#1A3C6E` (el manual no define una variante azul más oscura)
+- Hover de cian: `#00BFEE`
 
-## Components
+### Estados funcionales
 
-Botones de 42 px mínimos, radio de 10 px y foco visible. Badges separan confianza, verificación, estado de perfil y disponibilidad. Las superficies se agrupan solo cuando representan una unidad funcional. Estados vacíos explican el siguiente paso; limitaciones del MVP siempre incluyen una razón.
+- Éxito: `#1B6E3A`
+- Advertencia: `#8A5A00`
+- Riesgo o error: `#B42318`
+- Información: `#1A3C6E`
 
-## Layout and Motion
+Las transparencias para bordes, sombras y superficies parten únicamente de estos colores. No se introducen nuevas familias cromáticas.
 
-Navegación superior en escritorio y menú plegable en móvil. Búsqueda usa filtros, resultados y contexto geográfico en escritorio; móvil prioriza consulta y resultados. Transiciones de 180 ms, sin animaciones decorativas y con soporte para movimiento reducido.
+## Gradientes oficiales
+
+- Azul a cian: `linear-gradient(135deg, #1A3C6E 0%, #00D4FF 100%)`
+- Azul profundo: `linear-gradient(180deg, #1A3C6E 0%, #00005A 100%)`
+- Cian suave: `linear-gradient(90deg, #00D4FF 0%, #F8F9FA 100%)`
+- Neutro a azul: `linear-gradient(180deg, #F8F9FA 0%, #E2E8F0 100%)`
+
+## Tipografía y componentes
+
+La tipografía primaria es `Inter`, con pesos `400` Regular, `500` Medium, `600` SemiBold y `700` Bold. La tipografía técnica es `JetBrains Mono`, con pesos `500` y `700`, para IDs, puntuaciones, métricas, timestamps y reportes internos. La implementación carga ambas familias y conserva los fallbacks autorizados por el manual: `Roboto`/`Open Sans` para UI y `Source Code Pro` para datos técnicos.
+
+La jerarquía implementada sigue el manual de identidad:
+
+- H1: `32px`, `1.2`, Inter Bold.
+- H2 y títulos de sección/tarjeta: `24px`, `1.3`, Inter SemiBold.
+- Cuerpo y descripciones: `16px`, `1.5`, Inter Regular.
+- Botones y etiquetas de acción: `16px`, Inter SemiBold.
+- Labels de formularios: `13px`, Inter Medium.
+- Captions y texto complementario: `12px`, Inter Regular.
+- Datos técnicos: `14px`, `1.35`, JetBrains Mono Medium.
+
+Los tokens viven en `src/index.css` como `--tradearc-font-*`, `--tradearc-type-*` y `--tradearc-leading-*`. Los botones, entradas, tarjetas y modales usan radio de `8px`. Los estados siempre combinan color, icono y texto; nunca dependen solo del color.

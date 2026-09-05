@@ -113,7 +113,7 @@ export default function ProviderPage() {
       <section
         className="provider-cover"
         style={{
-          backgroundImage: `linear-gradient(90deg,rgba(14,35,31,.92),rgba(14,35,31,.25)),url(${portfolioImages[0] || provider.coverImageUrl || ""})`,
+          backgroundImage: `linear-gradient(90deg,rgba(13, 30, 56, .92),rgba(13, 30, 56, .25)),url(${portfolioImages[0] || provider.coverImageUrl || ""})`,
         }}
       >
         <div>
@@ -121,7 +121,7 @@ export default function ProviderPage() {
             <ArrowLeft /> Volver a resultados
           </Link>
           <span className="eyebrow">{provider.category}</span>
-          <h1>{provider.displayName}</h1>
+          <h1 title={provider.displayName}>{provider.displayName}</h1>
           <p className="provider-tagline">{provider.shortDescription || "Soluciones locales para negocios que necesitan avanzar con claridad."}</p>
           <div className="provider-identity-meta">
             <span><MapPin />{provider.city}</span>
@@ -398,6 +398,7 @@ export default function ProviderPage() {
               <textarea
                 required
                 minLength={10}
+                maxLength={1000}
                 value={description}
                 onChange={event => setDescription(event.target.value)}
                 placeholder="Contanos qué ocurrió"

@@ -2304,7 +2304,7 @@ async function startServer() {
 
   // Start the actual express server on host 0.0.0.0
   app.listen(PORT, "0.0.0.0", () => {
-    console.log(`\n🚀 Conecta Emprende AI Server running on http://0.0.0.0:${PORT}`);
+    console.log(`\n🚀 TradeArc Server running on http://0.0.0.0:${PORT}`);
   });
 
   if (process.env.NODE_ENV !== "test") {

@@ -104,6 +104,7 @@ export function NewRequestPage() {
             value={form.title}
             onChange={event => setForm({ ...form, title: event.target.value })}
             placeholder="Ej. 200 empaques para café"
+            maxLength={120}
           />
           {errors.title && <span className="field-error">{errors.title}</span>}
         </label>
@@ -114,6 +115,7 @@ export function NewRequestPage() {
             value={form.description}
             onChange={event => setForm({ ...form, description: event.target.value })}
             placeholder="Cantidad, medidas, materiales y cualquier detalle importante…"
+            maxLength={2000}
           />
           {errors.description && <span className="field-error">{errors.description}</span>}
         </label>
@@ -217,13 +219,13 @@ export function RequestsPage() {
               <div className="request-icon">
                 <MessageCircle />
               </div>
-              <div>
+              <div className="request-copy">
                 <div className="request-meta">
                   <RequestStatusBadge status={thread.status as any} />
                   <time>{thread.dateLabel || new Date(thread.createdAt).toLocaleDateString("es-NI")}</time>
                 </div>
-                <h2>{thread.subject}</h2>
-                <p>
+                <h2 className="request-title" title={thread.subject}>{thread.subject}</h2>
+                <p className="request-preview" title={`${thread.providerDisplayName || "Proveedor"}${thread.catalogItemId ? " · Producto" : ""} · ${thread.messages.at(-1)?.text || "Sin mensajes"}`}>
                   {thread.providerDisplayName || "Proveedor"}
                   {thread.catalogItemId ? " · Producto" : ""} · {thread.messages.at(-1)?.text}
                 </p>
@@ -432,6 +434,7 @@ export function RequestDetailPage() {
                     <textarea
                       required
                       minLength={10}
+                      maxLength={1000}
                       value={editComment}
                       onChange={event => setEditComment(event.target.value)}
                       placeholder="¿Cómo fue trabajar con este proveedor?"
@@ -450,7 +453,7 @@ export function RequestDetailPage() {
                   <>
                     <p className="success-note">
                       <CheckCircle2 /> Ya dejaste una reseña ({myReview.score} ★)
-                      {!canEditReview && <span className="text-gray-400"> · La ventana de edición (7 días) ya cerró</span>}
+                      {!canEditReview && <span className="text-[rgba(51,51,51,0.72)]"> · La ventana de edición (7 días) ya cerró</span>}
                     </p>
                     {myReview.comment && <p>{myReview.comment}</p>}
                     {canEditReview && (
@@ -475,6 +478,7 @@ export function RequestDetailPage() {
                   <textarea
                     required
                     minLength={10}
+                    maxLength={1000}
                     value={review}
                     onChange={event => setReview(event.target.value)}
                     placeholder="¿Cómo fue trabajar con este proveedor?"

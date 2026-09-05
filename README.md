@@ -1,4 +1,4 @@
-# Conecta Emprende AI
+# TradeArc
 
 MVP para conectar personas emprendedoras, MIPYMES y proveedores de Nicaragua mediante búsqueda en lenguaje natural, señales de confianza y solicitudes de cotización verificables.
 
