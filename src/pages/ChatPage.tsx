@@ -32,6 +32,7 @@ export default function ChatPage() {
     fetchMyThreads,
     clearThreads,
     getThread,
+    refreshThread,
     addMessage,
     updateThread,
     isLoading,
@@ -54,6 +55,9 @@ export default function ChatPage() {
   const isRequester = !!user && thread?.senderId === user.id;
   const isProviderParticipant = !!providerIdForUser && thread?.providerId === providerIdForUser;
   const actor: "provider" | "requester" = isProviderParticipant ? "provider" : "requester";
+  // La conversación mostrada y el `requestId` de la ruta deben coincidir antes
+  // de permitir cualquier mutación; si no, se actuaría sobre otra solicitud.
+  const isThreadReady = !!thread && thread.id === requestId;
 
   useEffect(() => {
     if (!user) {
@@ -75,6 +79,15 @@ export default function ChatPage() {
     }
   }, [thread?.providerId, getProvider]);
 
+  // Al cambiar de conversación no se arrastran borradores ni cotizaciones de
+  // la anterior: enviarlos en otra solicitud sería un error de intención.
+  useEffect(() => {
+    setReply("");
+    setQuoteOpen(false);
+    setPrice(currentThread?.quotedPriceLabel || "");
+    setDelivery(currentThread?.quotedDeliveryTime || "");
+  }, [currentThread?.id]);
+
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [thread?.messages.length]);
@@ -89,7 +102,7 @@ export default function ChatPage() {
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
-    if (!reply.trim() || !requestId) return;
+    if (!reply.trim() || !requestId || !isThreadReady) return;
     try {
       await addMessage(requestId, reply.trim());
       setReply("");
@@ -102,7 +115,7 @@ export default function ChatPage() {
 
   const handleSubmitQuote = async (event: FormEvent) => {
     event.preventDefault();
-    if (!price.trim() || !delivery.trim() || !requestId) return;
+    if (!price.trim() || !delivery.trim() || !requestId || !isThreadReady) return;
     try {
       await updateThread(requestId, {
         quotedPriceLabel: price.trim(),
@@ -115,14 +128,14 @@ export default function ChatPage() {
       );
 
       setQuoteOpen(false);
-      await getThread(requestId);
+      await refreshThread(requestId);
     } catch (e) {
       console.error("Send quote error:", e);
     }
   };
 
   const handleAcceptQuotation = async () => {
-    if (!requestId || !thread?.quotedPriceLabel) return;
+    if (!requestId || !isThreadReady || !thread?.quotedPriceLabel) return;
     try {
       await fetch(`/api/quotes/${requestId}/accept-quotation`, {
         method: "POST",
@@ -138,14 +151,14 @@ export default function ChatPage() {
         `✅ El cliente aceptó la cotización: ${thread.quotedPriceLabel}`
       );
 
-      await getThread(requestId);
+      await refreshThread(requestId);
     } catch (e) {
       console.error("Accept quotation error:", e);
     }
   };
 
   const handleConfirm = async (as: "requester" | "provider") => {
-    if (!requestId) return;
+    if (!requestId || !isThreadReady) return;
     try {
       const role = as === "requester" ? "REQUESTER" : "PROVIDER";
       await fetch(`/api/quotes/${requestId}/complete`, {
@@ -153,18 +166,18 @@ export default function ChatPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ role }),
       });
-      await getThread(requestId);
+      await refreshThread(requestId);
     } catch (e) {
       console.error("Confirm error:", e);
     }
   };
 
   const handleClose = async () => {
-    if (!requestId || !user) return;
+    if (!requestId || !user || !isThreadReady) return;
     try {
       const newStatus = isProviderParticipant ? "CLOSED_PROVIDER" : "CLOSED_REQUESTER";
       await updateThread(requestId, { status: newStatus });
-      await getThread(requestId);
+      await refreshThread(requestId);
     } catch (e) {
       console.error("Close error:", e);
     }
@@ -179,7 +192,9 @@ export default function ChatPage() {
     );
   }
 
-  if (isLoading) {
+  // Mientras el hilo cargado no corresponda a la ruta actual se muestra carga,
+  // nunca los datos de la conversación anterior.
+  if (isLoading || (thread && thread.id !== requestId)) {
     return (
       <div className="content-page">
         <div className="skeleton-list">
@@ -360,7 +375,10 @@ export default function ChatPage() {
                   </button>
                 )}
                 <button
-                  onClick={() => addMessage(requestId, actor === "provider" ? "¿Podés compartir cantidad, medidas y fecha deseada?" : "Te comparto los detalles necesarios para preparar la cotización.")}
+                  onClick={() => {
+                    if (!isThreadReady) return;
+                    addMessage(requestId, actor === "provider" ? "¿Podés compartir cantidad, medidas y fecha deseada?" : "Te comparto los detalles necesarios para preparar la cotización.");
+                  }}
                 >
                   <FileText /> {actor === "provider" ? "Pedir más detalles" : "Enviar detalles"}
                 </button>
