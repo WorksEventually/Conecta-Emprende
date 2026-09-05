@@ -32,6 +32,7 @@ export default function ChatPage() {
     fetchMyThreads,
     clearThreads,
     getThread,
+    refreshThread,
     addMessage,
     updateThread,
     isLoading,
@@ -54,6 +55,9 @@ export default function ChatPage() {
   const isRequester = !!user && thread?.senderId === user.id;
   const isProviderParticipant = !!providerIdForUser && thread?.providerId === providerIdForUser;
   const actor: "provider" | "requester" = isProviderParticipant ? "provider" : "requester";
+  // La conversación mostrada y el `requestId` de la ruta deben coincidir antes
+  // de permitir cualquier mutación; si no, se actuaría sobre otra solicitud.
+  const isThreadReady = !!thread && thread.id === requestId;
 
   useEffect(() => {
     if (!user) {
@@ -75,6 +79,15 @@ export default function ChatPage() {
     }
   }, [thread?.providerId, getProvider]);
 
+  // Al cambiar de conversación no se arrastran borradores ni cotizaciones de
+  // la anterior: enviarlos en otra solicitud sería un error de intención.
+  useEffect(() => {
+    setReply("");
+    setQuoteOpen(false);
+    setPrice(currentThread?.quotedPriceLabel || "");
+    setDelivery(currentThread?.quotedDeliveryTime || "");
+  }, [currentThread?.id]);
+
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [thread?.messages.length]);
@@ -89,11 +102,12 @@ export default function ChatPage() {
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
-    if (!reply.trim() || !requestId) return;
+    if (!reply.trim() || !requestId || !isThreadReady) return;
     try {
       await addMessage(requestId, reply.trim());
       setReply("");
-      await getThread(requestId);
+      // addMessage ya refresca el thread internamente; sin getThread
+      // extra para evitar doble fetch y el parpadeo de carga.
     } catch (e) {
       console.error("Send message error:", e);
     }
@@ -101,7 +115,7 @@ export default function ChatPage() {
 
   const handleSubmitQuote = async (event: FormEvent) => {
     event.preventDefault();
-    if (!price.trim() || !delivery.trim() || !requestId) return;
+    if (!price.trim() || !delivery.trim() || !requestId || !isThreadReady) return;
     try {
       await updateThread(requestId, {
         quotedPriceLabel: price.trim(),
@@ -114,14 +128,14 @@ export default function ChatPage() {
       );
 
       setQuoteOpen(false);
-      await getThread(requestId);
+      await refreshThread(requestId);
     } catch (e) {
       console.error("Send quote error:", e);
     }
   };
 
   const handleAcceptQuotation = async () => {
-    if (!requestId || !thread?.quotedPriceLabel) return;
+    if (!requestId || !isThreadReady || !thread?.quotedPriceLabel) return;
     try {
       await fetch(`/api/quotes/${requestId}/accept-quotation`, {
         method: "POST",
@@ -137,14 +151,14 @@ export default function ChatPage() {
         `✅ El cliente aceptó la cotización: ${thread.quotedPriceLabel}`
       );
 
-      await getThread(requestId);
+      await refreshThread(requestId);
     } catch (e) {
       console.error("Accept quotation error:", e);
     }
   };
 
   const handleConfirm = async (as: "requester" | "provider") => {
-    if (!requestId) return;
+    if (!requestId || !isThreadReady) return;
     try {
       const role = as === "requester" ? "REQUESTER" : "PROVIDER";
       await fetch(`/api/quotes/${requestId}/complete`, {
@@ -152,18 +166,18 @@ export default function ChatPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ role }),
       });
-      await getThread(requestId);
+      await refreshThread(requestId);
     } catch (e) {
       console.error("Confirm error:", e);
     }
   };
 
   const handleClose = async () => {
-    if (!requestId || !user) return;
+    if (!requestId || !user || !isThreadReady) return;
     try {
       const newStatus = isProviderParticipant ? "CLOSED_PROVIDER" : "CLOSED_REQUESTER";
       await updateThread(requestId, { status: newStatus });
-      await getThread(requestId);
+      await refreshThread(requestId);
     } catch (e) {
       console.error("Close error:", e);
     }
@@ -178,7 +192,9 @@ export default function ChatPage() {
     );
   }
 
-  if (isLoading) {
+  // Mientras el hilo cargado no corresponda a la ruta actual se muestra carga,
+  // nunca los datos de la conversación anterior.
+  if (isLoading || (thread && thread.id !== requestId)) {
     return (
       <div className="content-page">
         <div className="skeleton-list">
@@ -219,6 +235,7 @@ export default function ChatPage() {
             value={search}
             onChange={event => setSearch(event.target.value)}
             placeholder="Buscar conversación"
+            maxLength={120}
           />
         </label>
         <nav className="conversation-list">
@@ -234,9 +251,9 @@ export default function ChatPage() {
                   {(item.providerDisplayName || "PR").slice(0, 2).toUpperCase()}
                 </span>
                 <span className="conversation-copy">
-                  <strong>{item.providerDisplayName || "Proveedor"}</strong>
-                  <b>{item.subject}</b>
-                  <small>{itemLastMsg?.text}</small>
+                  <strong className="conversation-name" title={item.providerDisplayName || "Proveedor"}>{item.providerDisplayName || "Proveedor"}</strong>
+                  <b className="conversation-subject" title={item.subject}>{item.subject}</b>
+                  <small className="conversation-preview" title={itemLastMsg?.text || "Sin mensajes"}>{itemLastMsg?.text || "Sin mensajes"}</small>
                 </span>
                 <span className="conversation-meta">
                   <time>{item.dateLabel || new Date(item.createdAt).toLocaleDateString("es-NI", { day: "numeric", month: "short" })}</time>
@@ -253,9 +270,9 @@ export default function ChatPage() {
             <span className="conversation-avatar large">
               {providerName.slice(0, 2).toUpperCase()}
             </span>
-            <span>
-              <strong>{providerName}</strong>
-              <small>
+            <span className="chat-header-copy">
+              <strong className="chat-header-name" title={providerName}>{providerName}</strong>
+              <small className="chat-header-subject" title={thread.subject}>
                 {thread.subject}
                 {thread.catalogItemId ? " · Producto" : ""}
               </small>
@@ -296,26 +313,6 @@ export default function ChatPage() {
           </div>
         </section>
 
-        {thread.workflow_phase === "COMPLETION_PENDING" && thread.completionDeadline && (
-          <section className="completion-banner warning">
-            <Info size={20} />
-            <div>
-              <strong>Esperando confirmación de la otra parte</strong>
-              <p>Plazo límite: {new Date(thread.completionDeadline).toLocaleString("es-NI", { dateStyle: "medium", timeStyle: "short" })}</p>
-            </div>
-          </section>
-        )}
-
-        {thread.workflow_phase === "CLOSED" && thread.closure_outcome && (
-          <section className="completion-banner info">
-            <CheckCheck size={20} />
-            <div>
-              <strong>Trabajo cerrado</strong>
-              <p>{getClosureOutcomeMessage(thread.closure_outcome)}</p>
-            </div>
-          </section>
-        )}
-
         <section className="message-stream" aria-live="polite">
           {thread.messages.map((message, idx) => (
             <article className="message-block-wrap" key={message.id || idx}>
@@ -338,6 +335,26 @@ export default function ChatPage() {
                 )}
             </article>
           ))}
+          {thread.workflow_phase === "COMPLETION_PENDING" && thread.completionDeadline && (
+            <section className="completion-banner warning">
+              <Info size={20} />
+              <div>
+                <strong>Esperando confirmación de la otra parte</strong>
+                <p>Plazo límite: {new Date(thread.completionDeadline).toLocaleString("es-NI", { dateStyle: "medium", timeStyle: "short" })}</p>
+              </div>
+            </section>
+          )}
+
+          {thread.workflow_phase === "CLOSED" && thread.closure_outcome && (
+            <section className="completion-banner info">
+              <CheckCheck size={20} />
+              <div>
+                <strong>Trabajo cerrado</strong>
+                <p>{getClosureOutcomeMessage(thread.closure_outcome)}</p>
+              </div>
+            </section>
+          )}
+
           <div ref={bottomRef} />
         </section>
 
@@ -358,7 +375,10 @@ export default function ChatPage() {
                   </button>
                 )}
                 <button
-                  onClick={() => addMessage(requestId, actor === "provider" ? "¿Podés compartir cantidad, medidas y fecha deseada?" : "Te comparto los detalles necesarios para preparar la cotización.")}
+                  onClick={() => {
+                    if (!isThreadReady) return;
+                    addMessage(requestId, actor === "provider" ? "¿Podés compartir cantidad, medidas y fecha deseada?" : "Te comparto los detalles necesarios para preparar la cotización.");
+                  }}
                 >
                   <FileText /> {actor === "provider" ? "Pedir más detalles" : "Enviar detalles"}
                 </button>
@@ -381,12 +401,14 @@ export default function ChatPage() {
                     value={price}
                     onChange={event => setPrice(event.target.value)}
                     placeholder="Ej. C$1,200"
+                    maxLength={80}
                   />
                   <input
                     required
                     value={delivery}
                     onChange={event => setDelivery(event.target.value)}
                     placeholder="Ej. 5 días"
+                    maxLength={80}
                   />
                   <button className="button primary">
                     <Send /> Enviar cotización
@@ -407,6 +429,7 @@ export default function ChatPage() {
                 onChange={event => setReply(event.target.value)}
                 placeholder="Escribí un mensaje con los detalles del acuerdo…"
                 rows={2}
+                maxLength={2000}
               />
               <button className="button primary" disabled={!reply.trim()} aria-label="Enviar mensaje">
                 <Send /> Enviar
@@ -533,6 +556,7 @@ export default function ChatPage() {
             <textarea
               required
               minLength={10}
+              maxLength={1000}
               value={reportText}
               onChange={event => setReportText(event.target.value)}
               placeholder="Explicá qué ocurrió"
@@ -575,10 +599,12 @@ function MessageBlock({
   return (
     <article className={`chat-message ${role === "provider" ? "provider" : "client"}`}>
       <div className="message-author">
-        <strong>{role === "provider" ? providerName : requesterName}</strong>
+        <strong className="message-author-name" title={role === "provider" ? providerName : requesterName}>
+          {role === "provider" ? providerName : requesterName}
+        </strong>
         <time>{time}</time>
       </div>
-      <p>{text}</p>
+      <p className="message-text">{text}</p>
     </article>
   );
 }
@@ -615,12 +641,12 @@ function RequestSummaryUI({
   return (
     <section className="chat-context-section request-summary">
       <span className="eyebrow">Solicitud vinculada</span>
-      <h2>{thread.subject}</h2>
+      <h2 className="request-summary-title" title={thread.subject}>{thread.subject}</h2>
       <p>{clientMsg || "Sin descripción"}</p>
       <dl>
         <div>
           <dt>Proveedor</dt>
-          <dd>{providerName}</dd>
+          <dd className="text-truncate" title={providerName}>{providerName}</dd>
         </div>
         <div>
           <dt>Estado</dt>

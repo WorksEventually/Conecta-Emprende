@@ -9,7 +9,7 @@ export default function HomePage() {
   return <div className="home-page">
     <section className="home-hero">
       <div className="home-copy"><span className="eyebrow"><MapPin size={15}/> Hecho para emprender en Nicaragua</span><h1>Encontrá quién puede ayudarte a dar el siguiente paso.</h1><p>Contanos qué necesitás como lo dirías en un mensaje. Ordenamos opciones locales por confianza, ubicación, precio y disponibilidad.</p>
-        <form className="hero-search" onSubmit={e=>{e.preventDefault();submit();}}><Search aria-hidden="true"/><input aria-label="¿Qué necesitás?" value={query} onChange={e=>{setQuery(e.target.value);setError("");}} placeholder="¿Qué necesitás? Escribilo como un mensaje…"/><button>Buscar proveedores <ArrowRight size={18}/></button></form>{error && <p className="field-error" role="alert">{error}</p>}
+        <form className="hero-search" onSubmit={e=>{e.preventDefault();submit();}}><Search aria-hidden="true"/><input aria-label="¿Qué necesitás?" value={query} onChange={e=>{setQuery(e.target.value);setError("");}} maxLength={240} placeholder="¿Qué necesitás? Escribilo como un mensaje…"/><button>Buscar proveedores <ArrowRight size={18}/></button></form>{error && <p className="field-error" role="alert">{error}</p>}
         <div className="example-chips" aria-label="Ejemplos de búsqueda">{examples.map(item=><button key={item} onClick={()=>{setQuery(item);submit(item);}}>{item}</button>)}</div>
         <Link className="text-link" to="/search"><MapPin size={17}/> Explorar ciudades creativas</Link>
       </div>

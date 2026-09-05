@@ -1,4 +1,4 @@
-# Conecta Emprende AI — Arquitectura Técnica Completa
+# TradeArc — Arquitectura Técnica Completa
 
 > Documento de arquitectura original proporcionado por el usuario. Optimizado para: equipo pequeño, presupuesto cero, hackathon de 48h, y contexto nicaragüense.
 

@@ -325,7 +325,7 @@ export default function QuotesPage() {
   }
 
   return (
-    <div className="flex flex-col md:flex-row h-full w-full bg-slate-50 overflow-hidden relative">
+    <div className="flex flex-col md:flex-row h-full w-full bg-[#F8F9FA] overflow-hidden relative">
       {/* ============================================================ */}
       {/* Threads List Sidebar                                          */}
       {/* ============================================================ */}
@@ -336,23 +336,24 @@ export default function QuotesPage() {
             animate={{ x: 0, opacity: 1 }}
             exit={{ x: -300, opacity: 0 }}
             transition={{ type: "spring", bounce: 0, duration: 0.4 }}
-            className="w-full md:w-[350px] lg:w-[400px] h-full bg-white border-r border-slate-200 flex flex-col shrink-0 z-20 absolute md:static"
+            className="w-full md:w-[350px] lg:w-[400px] h-full bg-white border-r border-[rgba(26,60,110,0.18)] flex flex-col shrink-0 z-20 absolute md:static"
           >
-            <div className="p-5 border-b border-slate-100 flex-shrink-0">
+            <div className="p-5 border-b border-[rgba(26,60,110,0.18)] flex-shrink-0">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-2xl font-extrabold text-slate-900 tracking-tight">Cotizaciones</h2>
-                <span className="text-xs font-bold text-slate-500 bg-slate-100 px-2.5 py-1 rounded-full">
+                <h2 className="text-2xl font-bold text-[#333333] tracking-tight">Cotizaciones</h2>
+                <span className="text-xs font-bold text-[rgba(51,51,51,0.72)] bg-[#F8F9FA] px-2.5 py-1 rounded-full">
                   {threads.length} {threads.length === 1 ? "conversación" : "conversaciones"}
                 </span>
               </div>
               <div className="relative">
-                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[rgba(51,51,51,0.72)]" />
                 <input
                   type="text"
                   placeholder="Buscar mensajes..."
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 pl-10 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                  maxLength={120}
+                  className="w-full bg-[#F8F9FA] border border-[rgba(26,60,110,0.18)] rounded-xl py-2.5 pl-10 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-[#00D4FF]/25 focus:border-[#00D4FF] transition-all"
                 />
               </div>
             </div>
@@ -376,12 +377,12 @@ export default function QuotesPage() {
                     }}
                     className={`thread-item w-full text-left p-5 transition-all outline-none border-l-4 ${
                       activeThread?.id === thread.id
-                        ? 'bg-blue-50/60 border-blue-600'
-                        : 'border-transparent hover:bg-slate-50 focus-visible:bg-slate-50'
+                        ? 'bg-[#F8F9FA] border-[#1A3C6E]'
+                        : 'border-transparent hover:bg-[#F8F9FA] focus-visible:bg-[#F8F9FA]'
                     } ${thread.unread ? 'unread' : ''}`}
                   >
-                    <div className="flex justify-between items-start mb-1.5">
-                      <div className="flex items-center gap-3">
+                    <div className="flex justify-between items-start mb-1.5 min-w-0">
+                      <div className="flex items-center gap-3 min-w-0">
                         <div
                           className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold shrink-0 text-white"
                           style={{
@@ -390,21 +391,21 @@ export default function QuotesPage() {
                         >
                           {getInitials(thread.clientName)}
                         </div>
-                        <div>
-                          <div className="font-bold text-slate-900 text-[15px]">{thread.clientName}</div>
-                          <div className="text-xs font-semibold text-slate-500">{thread.date}</div>
+                        <div className="min-w-0">
+                          <div className="font-bold text-[#333333] text-[15px] truncate" title={thread.clientName}>{thread.clientName}</div>
+                          <div className="text-xs font-semibold text-[rgba(51,51,51,0.72)]">{thread.date}</div>
                         </div>
                       </div>
                     </div>
-                    <div className="pl-13">
-                      <div className="text-sm font-semibold text-slate-700 truncate mb-1.5">{thread.subject}</div>
-                      <div className="text-xs text-slate-500 truncate max-w-full">
+                    <div className="thread-copy pl-13 min-w-0">
+                      <div className="text-sm font-semibold text-[#333333] truncate mb-1.5" title={thread.subject}>{thread.subject}</div>
+                      <div className="text-xs text-[rgba(51,51,51,0.72)] truncate max-w-full" title={thread.messages[thread.messages.length - 1]?.text || "Sin mensajes"}>
                         {thread.messages[thread.messages.length - 1]?.text}
                       </div>
                       <div className="mt-3">
                         {thread.status === 'OPEN'
-                          ? <span className="inline-flex items-center gap-1 text-[11px] font-bold text-orange-700 bg-orange-100/80 px-2.5 py-1 rounded-full"><Clock className="w-3 h-3"/> Activo</span>
-                          : <span className="inline-flex items-center gap-1 text-[11px] font-bold text-slate-600 bg-slate-100 px-2.5 py-1 rounded-full"><CheckCircle className="w-3 h-3"/> Cerrado</span>
+                          ? <span className="inline-flex items-center gap-1 text-[11px] font-bold text-[#8A5A00] bg-[#F8F9FA] border border-[rgba(26,60,110,0.18)] px-2.5 py-1 rounded-full"><Clock className="w-3 h-3"/> Activo</span>
+                          : <span className="inline-flex items-center gap-1 text-[11px] font-bold text-[#333333] bg-[#F8F9FA] px-2.5 py-1 rounded-full"><CheckCircle className="w-3 h-3"/> Cerrado</span>
                         }
                       </div>
                     </div>
@@ -419,15 +420,15 @@ export default function QuotesPage() {
       {/* ============================================================ */}
       {/* Main Chat Area                                                */}
       {/* ============================================================ */}
-      <div className={`flex-1 flex flex-col bg-[#F8FAFC] h-full ${!activeThread ? 'hidden md:flex' : 'flex'} relative z-10 w-full`}>
+      <div className={`flex-1 flex flex-col bg-[#F8F9FA] h-full ${!activeThread ? 'hidden md:flex' : 'flex'} relative z-10 w-full`}>
         {activeThread ? (
           <>
             {/* Chat Header */}
-            <header className="px-6 py-4 bg-white/90 backdrop-blur-md border-b border-slate-200 flex justify-between items-center shrink-0 sticky top-0 z-20 shadow-sm">
+            <header className="px-6 py-4 bg-white/90 backdrop-blur-md border-b border-[rgba(26,60,110,0.18)] flex justify-between items-center shrink-0 sticky top-0 z-20 shadow-sm">
               <div className="flex items-center gap-4 min-w-0">
                 <button
                   onClick={() => setActiveThreadId(null)}
-                  className="md:hidden w-10 h-10 flex items-center justify-center rounded-full bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors shrink-0"
+                  className="md:hidden w-10 h-10 flex items-center justify-center rounded-full bg-[#F8F9FA] text-[#333333] hover:bg-[rgba(26,60,110,0.12)] transition-colors shrink-0"
                 >
                   <ChevronLeft className="w-5 h-5" />
                 </button>
@@ -441,7 +442,7 @@ export default function QuotesPage() {
                     {getInitials(activeThread.clientName)}
                   </div>
                   <div className="min-w-0">
-                    <h3 className="font-bold text-lg text-slate-900 leading-tight truncate">
+                    <h3 className="font-bold text-lg text-[#333333] leading-tight truncate">
                       {activeThread.clientName}
                     </h3>
                     <div className="flex items-center gap-2 text-sm font-medium">
@@ -449,8 +450,8 @@ export default function QuotesPage() {
                         <span className="conn-status-dot"></span>
                         {activeThread.status === 'OPEN' ? 'En línea' : 'Desconectado'}
                       </span>
-                      <span className="text-slate-300">·</span>
-                      <span className="text-slate-500 truncate">{activeThread.subject}</span>
+                      <span className="text-[rgba(51,51,51,0.72)]">·</span>
+                      <span className="text-[rgba(51,51,51,0.72)] truncate">{activeThread.subject}</span>
                     </div>
                   </div>
                 </div>
@@ -465,7 +466,7 @@ export default function QuotesPage() {
                     {completeMutation.isPending ? "Confirmando..." : "Confirmar trabajo completado"}
                   </button>
                 )}
-                <button className="w-10 h-10 rounded-full flex items-center justify-center text-slate-400 hover:bg-slate-100 transition-colors">
+                <button className="w-10 h-10 rounded-full flex items-center justify-center text-[rgba(51,51,51,0.72)] hover:bg-[#F8F9FA] transition-colors">
                   <MoreVertical className="w-5 h-5" />
                 </button>
               </div>
@@ -736,7 +737,7 @@ export default function QuotesPage() {
 
             {activeThread.workflow_phase === 'COMPLETION_PENDING' && activeThread.completionDeadline && (
               <div className="px-4 md:px-6 pt-4 pb-2 bg-white">
-                <div className="flex items-start gap-2 text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+                <div className="flex items-start gap-2 text-sm text-[#8A5A00] bg-[#F8F9FA] border border-[rgba(26,60,110,0.18)] rounded-xl px-4 py-3">
                   <Clock className="w-4 h-4 mt-0.5 shrink-0" />
                   <div>
                     <strong>Esperando confirmación del cliente</strong>
@@ -748,7 +749,7 @@ export default function QuotesPage() {
 
             {activeThread.workflow_phase === 'CLOSED' && activeThread.closure_outcome && (
               <div className="px-4 md:px-6 pt-4 pb-2 bg-white">
-                <div className="flex items-start gap-2 text-sm text-slate-700 bg-slate-100 border border-slate-200 rounded-xl px-4 py-3">
+                <div className="flex items-start gap-2 text-sm text-[#333333] bg-[#F8F9FA] border border-[rgba(26,60,110,0.18)] rounded-xl px-4 py-3">
                   <CheckCircle className="w-4 h-4 mt-0.5 shrink-0" />
                   <div>
                     <strong>Trabajo cerrado</strong>
@@ -759,10 +760,10 @@ export default function QuotesPage() {
             )}
 
             {/* Chat Input */}
-            <div className={`p-4 md:p-6 bg-white border-t border-slate-200 shrink-0 ${replyingTo ? 'pt-0' : ''}`}>
+            <div className={`p-4 md:p-6 bg-white border-t border-[rgba(26,60,110,0.18)] shrink-0 ${replyingTo ? 'pt-0' : ''}`}>
               <div className="flex items-end gap-3 max-w-4xl mx-auto">
                 <button
-                  className="w-12 h-12 flex items-center justify-center rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors shrink-0"
+                  className="w-12 h-12 flex items-center justify-center rounded-full text-[rgba(51,51,51,0.72)] hover:text-[#333333] hover:bg-[#F8F9FA] transition-colors shrink-0"
                   title="Adjuntar archivo"
                 >
                   <Paperclip className="w-5 h-5" />
@@ -772,13 +773,14 @@ export default function QuotesPage() {
                     ref={textareaRef}
                     value={reply}
                     onChange={(e) => setReply(e.target.value)}
+                    maxLength={2000}
                     disabled={activeThread.workflow_phase === 'CLOSED'}
                     placeholder={
                       activeThread.workflow_phase === 'CLOSED'
                         ? "Esta cotización ha sido cerrada."
                         : "Escribe tu respuesta comercial..."
                     }
-                    className="chat-textarea w-full bg-slate-50 border border-slate-200 rounded-2xl pl-5 pr-14 py-3.5 text-[15px] focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 disabled:opacity-60 disabled:bg-slate-100 font-medium shadow-sm transition-all"
+                    className="chat-textarea w-full bg-[#F8F9FA] border border-[rgba(26,60,110,0.18)] rounded-2xl pl-5 pr-14 py-3.5 text-[15px] focus:outline-none focus:ring-2 focus:ring-[#00D4FF]/25 focus:border-[#00D4FF] disabled:opacity-60 disabled:bg-[#F8F9FA] font-medium shadow-sm transition-all"
                     rows={1}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' && !e.shiftKey) {
@@ -798,12 +800,12 @@ export default function QuotesPage() {
                 </div>
               </div>
               <div className="mt-2 max-w-4xl mx-auto px-2 flex items-center justify-between">
-                <span className="text-[11px] font-semibold text-slate-400">
-                  <kbd className="px-1.5 py-0.5 bg-slate-100 border border-slate-200 rounded text-[10px]">Enter</kbd> enviar ·{" "}
-                  <kbd className="px-1.5 py-0.5 bg-slate-100 border border-slate-200 rounded text-[10px]">Shift+Enter</kbd> nueva línea
+                <span className="text-[11px] font-semibold text-[rgba(51,51,51,0.72)]">
+                  <kbd className="px-1.5 py-0.5 bg-[#F8F9FA] border border-[rgba(26,60,110,0.18)] rounded text-[10px]">Enter</kbd> enviar ·{" "}
+                  <kbd className="px-1.5 py-0.5 bg-[#F8F9FA] border border-[rgba(26,60,110,0.18)] rounded text-[10px]">Shift+Enter</kbd> nueva línea
                 </span>
                 {reply.length > 0 && (
-                  <span className="text-[11px] font-semibold text-slate-400">
+                  <span className="text-[11px] font-semibold text-[rgba(51,51,51,0.72)]">
                     {reply.length} caracteres
                   </span>
                 )}

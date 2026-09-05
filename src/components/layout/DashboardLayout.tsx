@@ -10,14 +10,14 @@ export default function DashboardLayout() {
   ];
 
   return (
-    <div className="flex flex-col md:flex-row h-screen h-[100dvh] w-full bg-slate-50 overflow-hidden">
-      <aside className="w-full md:w-64 bg-white border-b md:border-b-0 md:border-r border-slate-200 shrink-0 flex flex-col h-auto md:h-full z-10">
+    <div className="flex flex-col md:flex-row h-screen h-[100dvh] w-full bg-[#F8F9FA] overflow-hidden">
+      <aside className="w-full md:w-64 bg-white border-b md:border-b-0 md:border-r border-[rgba(26,60,110,0.18)] shrink-0 flex flex-col h-auto md:h-full z-10">
         <div className="p-6 shrink-0">
           <Link to="/" className="text-xl font-bold tracking-tight text-[var(--brand-dark)] mb-4 block">
-            Conecta Emprende AI
+            TradeArc
           </Link>
-          <h2 className="text-lg font-bold text-slate-900">Mi Panel</h2>
-          <p className="text-sm text-slate-500">Proveedor</p>
+          <h2 className="text-lg font-bold text-[#333333]">Mi Panel</h2>
+          <p className="text-sm text-[rgba(51,51,51,0.72)]">Proveedor</p>
         </div>
         <nav className="px-4 pb-4 md:pb-0 space-y-1 flex md:flex-col overflow-x-auto shrink-0 md:flex-1">
           {navItems.map((item) => {
@@ -29,11 +29,11 @@ export default function DashboardLayout() {
                   to={item.path}
                   className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
                     isActive 
-                      ? 'bg-[color-mix(in_oklch,var(--brand)_12%,white)] text-[var(--brand-dark)]' 
-                      : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                      ? 'bg-[rgba(0,212,255,0.12)] text-[var(--brand-dark)]'
+                      : 'text-[#333333] hover:bg-[#F8F9FA] hover:text-[#333333]'
                   }`}
                 >
-                  <Icon className={`w-5 h-5 ${isActive ? 'text-[var(--brand-dark)]' : 'text-slate-400'}`} />
+                  <Icon className={`w-5 h-5 ${isActive ? 'text-[var(--brand-dark)]' : 'text-[rgba(51,51,51,0.72)]'}`} />
                 {item.name}
               </Link>
             );

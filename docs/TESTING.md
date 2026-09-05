@@ -1,6 +1,6 @@
-# Testing Guide - Conecta Emprende AI
+# Testing Guide - TradeArc
 
-Guía completa de la suite de pruebas del proyecto Conecta Emprende AI (TradeArc MVP).
+Guía completa de la suite de pruebas del proyecto TradeArc MVP.
 
 **Última actualización:** 2026-09-03 (Sprint 4)
 

@@ -169,7 +169,7 @@ export default function AdminReportsPage() {
                 onClick={() => setSelectedId(report.id)}
               >
                 <span>{reportLabels[report.status]}</span>
-                <strong>{report.provider.displayName}</strong>
+                <strong className="text-truncate" title={report.provider.displayName}>{report.provider.displayName}</strong>
                 <small>Riesgo {Math.round(report.riskScore)} · {new Date(report.generatedAt).toLocaleDateString("es-NI")}</small>
               </button>
             ))}
@@ -181,7 +181,7 @@ export default function AdminReportsPage() {
                 <div className="section-heading">
                   <div>
                     <span className="eyebrow">{reportLabels[selected.status]}</span>
-                    <h2>{selected.provider.displayName}</h2>
+                    <h2 className="text-truncate" title={selected.provider.displayName}>{selected.provider.displayName}</h2>
                   </div>
                   <span className={`provider-status-chip ${selected.provider.status.toLowerCase()}`}>
                     {getProviderStatusLabel(selected.provider.status)}
@@ -204,7 +204,7 @@ export default function AdminReportsPage() {
                 <h2>Acciones de revisión</h2>
                 <label>
                   Nota interna o razón
-                  <textarea value={note} onChange={event => setNote(event.target.value)} rows={4} placeholder="Resumen seguro para auditoría, sin chats privados." />
+                  <textarea value={note} onChange={event => setNote(event.target.value)} rows={4} maxLength={1000} placeholder="Resumen seguro para auditoría, sin chats privados." />
                 </label>
                 <div className="report-actions">
                   <button className="button secondary" onClick={() => updateReport("UNDER_REVIEW")}><Clock3 /> En revisión</button>
@@ -228,7 +228,7 @@ export default function AdminReportsPage() {
                   <form className="admin-moderation-form" onSubmit={event => { event.preventDefault(); moderateProvider("suspend"); }}>
                     <label>
                       Razón obligatoria
-                      <textarea required value={reason} onChange={event => setReason(event.target.value)} rows={3} />
+                      <textarea required value={reason} onChange={event => setReason(event.target.value)} rows={3} maxLength={500} />
                     </label>
                     <label>
                       Suspender hasta (opcional)

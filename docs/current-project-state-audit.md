@@ -1,4 +1,4 @@
-# Current Project State Audit — Conecta Emprende AI
+# Current Project State Audit — TradeArc
 
 Branch: `docs/deep-project-audit-trello-plan`
 

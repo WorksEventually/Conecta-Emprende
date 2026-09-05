@@ -47,6 +47,12 @@ export interface QuoteThread {
 interface QuotesState {
   threads: QuoteThread[];
   currentThread: QuoteThread | null;
+  /**
+   * Última conversación solicitada a la API. Permite distinguir un refresco
+   * de la conversación visible de una navegación a otra solicitud, y descartar
+   * respuestas que llegan tarde.
+   */
+  requestedThreadId: string | null;
   isLoading: boolean;
   error: string | null;
 
@@ -54,6 +60,12 @@ interface QuotesState {
   fetchThreadsByProvider: (providerId: string) => Promise<void>;
   fetchThreadsBySender: (senderId: string) => Promise<void>;
   getThread: (threadId: string) => Promise<QuoteThread | null>;
+  /**
+   * Refresca una conversación solo si sigue siendo la vigente. Se usa después
+   * de una mutación para que su refresco no reemplace la conversación que la
+   * persona ya está viendo si navegó mientras la petición estaba en vuelo.
+   */
+  refreshThread: (threadId: string) => Promise<void>;
   addMessage: (threadId: string, text: string) => Promise<void>;
   updateThread: (threadId: string, data: Record<string, any>) => Promise<void>;
   createThread: (data: {
@@ -69,6 +81,7 @@ interface QuotesState {
 export const useQuotesStore = create<QuotesState>((set, get) => ({
   threads: [],
   currentThread: null,
+  requestedThreadId: null,
   isLoading: false,
   error: null,
 
@@ -130,12 +143,27 @@ export const useQuotesStore = create<QuotesState>((set, get) => ({
   },
 
   getThread: async (threadId) => {
-    set({ isLoading: true, error: null });
+    // Refresco silencioso SOLO cuando la conversación ya cargada es la misma
+    // que se está pidiendo (evita parpadeo/skeleton al enviar o confirmar).
+    // Si se pide otra conversación, se limpia la anterior y se muestra estado
+    // de carga: mostrar el hilo A mientras la ruta apunta a B permitiría
+    // actuar sobre la solicitud equivocada.
+    const isSameThread = get().currentThread?.id === threadId;
+    set(state => ({
+      error: null,
+      requestedThreadId: threadId,
+      isLoading: !isSameThread,
+      currentThread: isSameThread ? state.currentThread : null,
+    }));
     try {
       const res = await fetch(`/api/quotes/${encodeURIComponent(threadId)}`, {
         credentials: "include",
       });
       const data = await res.json();
+
+      // Respuesta obsoleta: mientras esperábamos se pidió otra conversación.
+      // No debe sobrescribir el hilo vigente ni apagar su estado de carga.
+      if (get().requestedThreadId !== threadId) return null;
 
       if (!res.ok || !data.success) {
         set({ currentThread: null, isLoading: false });
@@ -152,9 +180,15 @@ export const useQuotesStore = create<QuotesState>((set, get) => ({
       return data.data;
     } catch (error) {
       console.error("getThread error:", error);
+      if (get().requestedThreadId !== threadId) return null;
       set({ error: (error as Error).message, isLoading: false });
       return null;
     }
+  },
+
+  refreshThread: async (threadId) => {
+    if (get().requestedThreadId !== threadId) return;
+    await get().getThread(threadId);
   },
 
   addMessage: async (threadId, text) => {
@@ -172,7 +206,7 @@ export const useQuotesStore = create<QuotesState>((set, get) => ({
       }
 
       // Refresh current thread to get updated messages
-      await get().getThread(threadId);
+      await get().refreshThread(threadId);
     } catch (error) {
       console.error("addMessage error:", error);
       throw error;
@@ -194,7 +228,7 @@ export const useQuotesStore = create<QuotesState>((set, get) => ({
       }
 
       // Refresh thread data
-      await get().getThread(threadId);
+      await get().refreshThread(threadId);
     } catch (error) {
       console.error("updateThread error:", error);
       throw error;
@@ -228,6 +262,6 @@ export const useQuotesStore = create<QuotesState>((set, get) => ({
     }
   },
 
-  clearCurrentThread: () => set({ currentThread: null }),
-  clearThreads: () => set({ threads: [], currentThread: null, error: null, isLoading: false }),
+  clearCurrentThread: () => set({ currentThread: null, requestedThreadId: null }),
+  clearThreads: () => set({ threads: [], currentThread: null, requestedThreadId: null, error: null, isLoading: false }),
 }));

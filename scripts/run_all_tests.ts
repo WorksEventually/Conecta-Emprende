@@ -69,7 +69,7 @@ async function runAllTests(): Promise<void> {
 
   console.log("\n");
   console.log("╔════════════════════════════════════════════════════════════╗");
-  console.log("║         🧪 CONECTA EMPRENDE - TEST SUITE RUNNER 🧪        ║");
+  console.log("║              🧪 TRADEARC - TEST SUITE RUNNER 🧪          ║");
   console.log("╚════════════════════════════════════════════════════════════╝");
   console.log(`\nEjecutando ${TEST_SUITES.length} suites de tests...`);
   console.log(`Estrategia: Continuar en caso de error (fail-safe)\n`);
