@@ -73,10 +73,12 @@ function RecentRequests({ threads }: { threads: QuoteThread[] }) {
     <div className="mini-request-list">
       {recent.map(thread => (
         <Link to={`/requests/${thread.id}/chat`} key={thread.id}>
-          <span>
+          <span className="mini-request-copy">
             <RequestStatusBadge status={thread.status as any} />
-            <strong>{thread.subject}</strong>
-            <small>{thread.providerDisplayName || "Proveedor"} · {thread.messages.at(-1)?.text || "Sin mensajes"}</small>
+            <strong className="text-truncate" title={thread.subject}>{thread.subject}</strong>
+            <small className="text-clamp-2" title={`${thread.providerDisplayName || "Proveedor"} · ${thread.messages.at(-1)?.text || "Sin mensajes"}`}>
+              {thread.providerDisplayName || "Proveedor"} · {thread.messages.at(-1)?.text || "Sin mensajes"}
+            </small>
           </span>
           <MessageCircle />
         </Link>
@@ -260,8 +262,8 @@ export default function MyProfileDashboardPage() {
             />
             <div>
               <span className="eyebrow">Resumen de gestión</span>
-              <h2>{provider.displayName}</h2>
-              <p>{provider.aboutDescription || provider.shortDescription}</p>
+              <h2 className="text-truncate" title={provider.displayName}>{provider.displayName}</h2>
+              <p className="text-clamp-3">{provider.aboutDescription || provider.shortDescription}</p>
               <div className="badges">
                 <TrustScoreBadge
                   trustScore={trustScore ? trustScore : null}

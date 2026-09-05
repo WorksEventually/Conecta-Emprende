@@ -190,6 +190,7 @@ export default function EditPublicProfilePage() {
           <input
             value={form.displayName}
             onChange={event => setForm({ ...form, displayName: event.target.value })}
+            maxLength={80}
           />
           {errors.displayName && <span className="field-error">{errors.displayName}</span>}
         </label>
@@ -199,6 +200,7 @@ export default function EditPublicProfilePage() {
             value={form.tagline}
             onChange={event => setForm({ ...form, tagline: event.target.value })}
             placeholder="Ej. Empaques responsables para marcas locales"
+            maxLength={140}
           />
         </label>
         <div className="form-grid">
@@ -280,6 +282,7 @@ export default function EditPublicProfilePage() {
             rows={6}
             value={form.description}
             onChange={event => setForm({ ...form, description: event.target.value })}
+            maxLength={2000}
           />
           {errors.description && <span className="field-error">{errors.description}</span>}
           <span className="field-hint">{form.description.length}/40 mínimo</span>
@@ -289,6 +292,7 @@ export default function EditPublicProfilePage() {
           <input
             value={form.avatarUrl}
             onChange={event => setForm({ ...form, avatarUrl: event.target.value })}
+            maxLength={500}
           />
         </label>
         <label>
@@ -296,6 +300,7 @@ export default function EditPublicProfilePage() {
           <input
             value={form.coverImageUrl}
             onChange={event => setForm({ ...form, coverImageUrl: event.target.value })}
+            maxLength={500}
           />
         </label>
         {errors.submit && <p className="field-error">{errors.submit}</p>}
