@@ -63,6 +63,10 @@ export function getLegacyDisplayStatus(
       case "CANCELLED_BY_REQUESTER": return "CLOSED_REQUESTER";
       case "CANCELLED_BY_PROVIDER": return "CLOSED_PROVIDER";
       case "CANCELLED_BY_PROVIDER_AFTER_ENGAGEMENT": return "CLOSED_PROVIDER";
+      case "DECLINED_BY_PROVIDER": return "CLOSED_PROVIDER"; // Sprint 6
+      case "EXPIRED_NO_PROVIDER_RESPONSE": return "CLOSED_EXPIRED"; // Sprint 6
+      case "ACCOUNT_DEACTIVATED": return "CLOSED_DEACTIVATED"; // Sprint 6
+      case "CLOSED_BY_ADMIN": return "CLOSED_ADMIN"; // Sprint 6
       default: return "CLOSED";
     }
   }
@@ -358,6 +362,34 @@ async function resolveTimeoutInline(thread: any): Promise<void> {
   }
 }
 
+export async function validateNotExpired(threadId: string): Promise<void> {
+  const thread = await prisma.quoteThread.findUnique({
+    where: { id: threadId },
+    select: {
+      id: true,
+      workflow_phase: true,
+      completionDeadline: true,
+      confirmedByRequesterAt: true,
+      confirmedByProviderAt: true,
+      providerId: true,
+      version: true,
+      cycleNo: true,
+    },
+  });
+
+  if (!thread) {
+    throw new Error('Thread no encontrado');
+  }
+
+  if (thread.completionDeadline) {
+    const now = new Date();
+    if (now >= thread.completionDeadline) {
+      await resolveTimeoutInline(thread);
+      throw new Error('TIMEOUT_ALREADY_RESOLVED');
+    }
+  }
+}
+
 export async function getThreadById(threadId: string): Promise<QuoteThreadWithMessages | null> {
   const t = await prisma.quoteThread.findUnique({
     where: { id: threadId },
@@ -422,10 +454,20 @@ export async function addMessage(threadId: string, data: {
       },
     });
 
+    const threadUpdateData: any = {};
+
     if (thread?.status === "OPEN") {
+      threadUpdateData.status = "IN_CONVERSATION";
+    }
+
+    if (data.authorRole !== 'system') {
+      threadUpdateData.lastNonSystemicMessageAt = new Date();
+    }
+
+    if (Object.keys(threadUpdateData).length > 0) {
       await tx.quoteThread.update({
         where: { id: threadId },
-        data: { status: "IN_CONVERSATION" },
+        data: threadUpdateData,
       });
     }
 
@@ -514,6 +556,132 @@ export async function updateThread(threadId: string, data: {
   }
 
   return thread;
+}
+
+export async function rejectCompletion(
+  threadId: string,
+  actorUserId: string,
+  note?: string
+): Promise<void> {
+  const thread = await prisma.quoteThread.findUnique({
+    where: { id: threadId },
+    select: { 
+      workflow_phase: true,
+      completionInitiatorUserId: true,
+      completionRejectedAt: true,
+      completionRejectedByUserId: true,
+      lastNonSystemicMessageAt: true,
+      senderId: true,
+      providerId: true,
+      cycleNo: true,
+    },
+  });
+
+  if (!thread) {
+    throw new Error('Thread no encontrado');
+  }
+
+  if (thread.workflow_phase !== 'COMPLETION_PENDING') {
+    throw new Error('Thread no está en ciclo de completado');
+  }
+
+  await validateNotExpired(threadId);
+
+  if (thread.completionInitiatorUserId === actorUserId) {
+    throw new Error('El iniciador no puede rechazar. Usa withdrawal.');
+  }
+
+  if (thread.completionRejectedAt && thread.completionRejectedByUserId === actorUserId) {
+    const hoursSinceReject = (Date.now() - thread.completionRejectedAt.getTime()) / (1000 * 60 * 60);
+    if (hoursSinceReject < 24) {
+      const hoursRemaining = Math.ceil(24 - hoursSinceReject);
+      throw new Error(`Debés esperar ${hoursRemaining} horas para rechazar nuevamente`);
+    }
+  }
+
+  if (thread.completionRejectedAt && thread.lastNonSystemicMessageAt) {
+    if (thread.lastNonSystemicMessageAt <= thread.completionRejectedAt) {
+      throw new Error('Debe haber al menos 1 mensaje antes de rechazar nuevamente');
+    }
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.quoteThread.update({
+      where: { id: threadId },
+      data: {
+        workflow_phase: 'OPEN',
+        completionDeadline: null,
+        confirmedByRequesterAt: null,
+        confirmedByProviderAt: null,
+        completionRejectedAt: new Date(),
+        completionRejectedByUserId: actorUserId,
+        completionInitiatorUserId: null,
+      },
+    });
+
+    await emitRequestEvent(prisma, {
+      requestId: threadId,
+      eventType: 'COMPLETION_NOT_ACCEPTED',
+      actorUserId,
+      completionCycleNo: thread.cycleNo,
+      metadata: { note },
+      tx,
+    });
+  });
+
+  log.info('Completion rejected', { threadId, actorUserId, note });
+}
+
+export async function withdrawCompletion(
+  threadId: string,
+  actorUserId: string
+): Promise<void> {
+  const thread = await prisma.quoteThread.findUnique({
+    where: { id: threadId },
+    select: {
+      workflow_phase: true,
+      completionInitiatorUserId: true,
+      senderId: true,
+      providerId: true,
+    },
+  });
+
+  if (!thread) {
+    throw new Error('Thread no encontrado');
+  }
+
+  if (thread.workflow_phase !== 'COMPLETION_PENDING') {
+    throw new Error('Thread no está en ciclo de completado');
+  }
+
+  await validateNotExpired(threadId);
+
+  if (thread.completionInitiatorUserId !== actorUserId) {
+    throw new Error('Solo el iniciador puede retirar la solicitud de cierre');
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.quoteThread.update({
+      where: { id: threadId },
+      data: {
+        workflow_phase: 'OPEN',
+        completionDeadline: null,
+        confirmedByRequesterAt: null,
+        confirmedByProviderAt: null,
+        completionInitiatorUserId: null,
+      },
+    });
+
+    await emitRequestEvent(prisma, {
+      requestId: threadId,
+      eventType: 'COMPLETION_REQUEST_WITHDRAWN',
+      actorUserId,
+      metadata: {},
+      tx,
+    });
+  });
+
+  log.info('Completion withdrawn', { threadId, actorUserId });
 }
 
 function computeDateLabel(date: Date): string {

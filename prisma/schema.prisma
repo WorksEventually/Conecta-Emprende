@@ -683,6 +683,12 @@ model QuoteThread {
   version Int @default(1)
   cycleNo Int @default(0)
 
+  // Sprint 6: Campos para rechazo/withdrawal del cierre (P2 §4.3, §4.4)
+  completionInitiatorUserId   String?   @map("completion_initiator_user_id")
+  completionRejectedAt        DateTime? @map("completion_rejected_at")
+  completionRejectedByUserId  String?   @map("completion_rejected_by_user_id")
+  lastNonSystemicMessageAt    DateTime? @map("last_nonsystemic_message_at")
+
   messages         QuoteMessage[]
   quoteOffers      QuoteOffer[]
   reviews          Review[]            @relation("RequestReviews")
@@ -831,6 +837,10 @@ enum ClosureOutcome {
   CANCELLED_BY_PROVIDER // Proveedor canceló explícitamente sin interacción previa
   CANCELLED_BY_PROVIDER_AFTER_ENGAGEMENT // Proveedor canceló tras interacción (habilita reseña peso 0.5)
   MODERATION_CLOSURE // Cerrado por acción de moderación
+  DECLINED_BY_PROVIDER // Sprint 6: Proveedor rechaza ANTES de interactuar
+  EXPIRED_NO_PROVIDER_RESPONSE // Sprint 6: Nadie respondió jamás
+  ACCOUNT_DEACTIVATED // Sprint 6: Cuenta desactivada durante interacción
+  CLOSED_BY_ADMIN // Sprint 6: Cierre administrativo
 }
 
 enum ModerationState {
@@ -854,4 +864,8 @@ enum RequestEventType {
   MESSAGE_SENT
   DEADLINE_EXTENDED
   ADMIN_OVERRIDE
+  COMPLETION_NOT_ACCEPTED // Sprint 6: Rechazo del cierre (P2 §4.3)
+  COMPLETION_REQUEST_WITHDRAWN // Sprint 6: Retiro del cierre (P2 §4.4)
+  REQUEST_DECLINED // Sprint 6: Proveedor rechaza solicitud
+  REQUEST_EXPIRED // Sprint 6: Expiración sin respuesta
 }
