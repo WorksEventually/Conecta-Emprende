@@ -1186,6 +1186,20 @@ async function startServer() {
       }
 
       await prisma.$transaction(async (tx) => {
+        // Re-read thread inside transaction to get latest state
+        const freshThread = await tx.quoteThread.findUnique({
+          where: { id },
+          select: {
+            confirmedByRequesterAt: true,
+            confirmedByProviderAt: true,
+            workflow_phase: true,
+          },
+        });
+
+        if (!freshThread) {
+          throw new Error('Thread not found');
+        }
+
         const dbTimeResult = await tx.$queryRaw<Array<{ now: Date; deadline: Date }>>`
           SELECT NOW() as now, NOW() + INTERVAL '72 hours' as deadline
         `;
@@ -1195,9 +1209,10 @@ async function startServer() {
         if (role === "REQUESTER") updateData.confirmedByRequesterAt = now;
         else updateData.confirmedByProviderAt = now;
 
+        // Check if the other participant already confirmed (using fresh data from transaction)
         const otherConfirmed =
-          (role === "REQUESTER" && thread.confirmedByProviderAt) ||
-          (role === "PROVIDER" && thread.confirmedByRequesterAt);
+          (role === "REQUESTER" && freshThread.confirmedByProviderAt) ||
+          (role === "PROVIDER" && freshThread.confirmedByRequesterAt);
 
         if (otherConfirmed) {
           updateData.workflow_phase = "CLOSED";

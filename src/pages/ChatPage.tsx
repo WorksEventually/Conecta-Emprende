@@ -341,85 +341,87 @@ export default function ChatPage() {
           <div ref={bottomRef} />
         </section>
 
-        {(thread.workflow_phase === "OPEN" || thread.workflow_phase === "COMPLETION_PENDING") && (
-          <footer className="chat-composer">
-            <div className="quick-replies">
-              {quickReplies[actor].map(text => (
-                <button key={text} onClick={() => setReply(text)}>
-                  {text}
-                </button>
-              ))}
-            </div>
-            <div className="chat-quick-actions">
-              {actor === "provider" && (
-                <button onClick={() => setQuoteOpen(!quoteOpen)}>
-                  <HandCoins /> Enviar precio estimado
-                </button>
-              )}
-              <button
-                onClick={() => addMessage(requestId, actor === "provider" ? "¿Podés compartir cantidad, medidas y fecha deseada?" : "Te comparto los detalles necesarios para preparar la cotización.")}
-              >
-                <FileText /> {actor === "provider" ? "Pedir más detalles" : "Enviar detalles"}
-              </button>
-              <button onClick={() => handleConfirm(actor === "provider" ? "provider" : "requester")}>
-                <CheckCheck /> Confirmar trabajo
-              </button>
-              <button onClick={() => setExternalOpen(true)}>
-                <AlertTriangle /> Contacto externo
-              </button>
-            </div>
-
-            {quoteOpen && (
-              <form className="quote-composer" onSubmit={handleSubmitQuote}>
-                <div>
-                  <strong>Enviar cotización en la conversación</strong>
-                  <small>El precio y entrega quedarán vinculados a la solicitud.</small>
-                </div>
-                <input
-                  required
-                  value={price}
-                  onChange={event => setPrice(event.target.value)}
-                  placeholder="Ej. C$1,200"
-                />
-                <input
-                  required
-                  value={delivery}
-                  onChange={event => setDelivery(event.target.value)}
-                  placeholder="Ej. 5 días"
-                />
-                <button className="button primary">
-                  <Send /> Enviar cotización
-                </button>
-              </form>
-            )}
-
-            {thread.closure_outcome !== null ? (
-              <div className="message-composer" style={{ 
-                padding: '1rem', 
-                backgroundColor: '#f3f4f6', 
-                borderRadius: '0.5rem',
-                textAlign: 'center',
-                color: '#6b7280'
-              }}>
-                <p style={{ margin: 0, fontWeight: 500 }}>
-                  Esta conversación está cerrada. No se pueden enviar más mensajes.
-                </p>
+        <footer className="chat-composer">
+          {(thread.workflow_phase === "OPEN" || thread.workflow_phase === "COMPLETION_PENDING") && (
+            <>
+              <div className="quick-replies">
+                {quickReplies[actor].map(text => (
+                  <button key={text} onClick={() => setReply(text)}>
+                    {text}
+                  </button>
+                ))}
               </div>
-            ) : (
-              <form className="message-composer" onSubmit={handleSubmit}>
-                <textarea
-                  value={reply}
-                  onChange={event => setReply(event.target.value)}
-                  placeholder="Escribí un mensaje con los detalles del acuerdo…"
-                  rows={2}
-                />
-                <button className="button primary" disabled={!reply.trim()} aria-label="Enviar mensaje">
-                  <Send /> Enviar
+              <div className="chat-quick-actions">
+                {actor === "provider" && (
+                  <button onClick={() => setQuoteOpen(!quoteOpen)}>
+                    <HandCoins /> Enviar precio estimado
+                  </button>
+                )}
+                <button
+                  onClick={() => addMessage(requestId, actor === "provider" ? "¿Podés compartir cantidad, medidas y fecha deseada?" : "Te comparto los detalles necesarios para preparar la cotización.")}
+                >
+                  <FileText /> {actor === "provider" ? "Pedir más detalles" : "Enviar detalles"}
                 </button>
-              </form>
-            )}
-          </footer>
-        )}
+                <button onClick={() => handleConfirm(actor === "provider" ? "provider" : "requester")}>
+                  <CheckCheck /> Confirmar trabajo
+                </button>
+                <button onClick={() => setExternalOpen(true)}>
+                  <AlertTriangle /> Contacto externo
+                </button>
+              </div>
+
+              {quoteOpen && (
+                <form className="quote-composer" onSubmit={handleSubmitQuote}>
+                  <div>
+                    <strong>Enviar cotización en la conversación</strong>
+                    <small>El precio y entrega quedarán vinculados a la solicitud.</small>
+                  </div>
+                  <input
+                    required
+                    value={price}
+                    onChange={event => setPrice(event.target.value)}
+                    placeholder="Ej. C$1,200"
+                  />
+                  <input
+                    required
+                    value={delivery}
+                    onChange={event => setDelivery(event.target.value)}
+                    placeholder="Ej. 5 días"
+                  />
+                  <button className="button primary">
+                    <Send /> Enviar cotización
+                  </button>
+                </form>
+              )}
+            </>
+          )}
+
+          {thread.closure_outcome !== null ? (
+            <div className="message-composer" style={{ 
+              padding: '1rem', 
+              backgroundColor: '#f3f4f6', 
+              borderRadius: '0.5rem',
+              textAlign: 'center',
+              color: '#6b7280'
+            }}>
+              <p style={{ margin: 0, fontWeight: 500 }}>
+                Esta conversación está cerrada. No se pueden enviar más mensajes.
+              </p>
+            </div>
+          ) : (
+            <form className="message-composer" onSubmit={handleSubmit}>
+              <textarea
+                value={reply}
+                onChange={event => setReply(event.target.value)}
+                placeholder="Escribí un mensaje con los detalles del acuerdo…"
+                rows={2}
+              />
+              <button className="button primary" disabled={!reply.trim()} aria-label="Enviar mensaje">
+                <Send /> Enviar
+              </button>
+            </form>
+          )}
+        </footer>
       </main>
 
       <aside className="chat-context">
@@ -598,6 +600,10 @@ function getClosureOutcomeMessage(outcome: string): string {
     CANCELLED_BY_PROVIDER: "Cancelado por el proveedor.",
     CANCELLED_BY_PROVIDER_AFTER_ENGAGEMENT: "El proveedor canceló después de interactuar. Podés dejar una reseña calificada.",
     MODERATION_CLOSURE: "Cerrado por moderación.",
+    DECLINED_BY_PROVIDER: "El proveedor declinó esta solicitud.",
+    EXPIRED_NO_PROVIDER_RESPONSE: "El proveedor no respondió a la solicitud.",
+    ACCOUNT_DEACTIVATED: "Cerrado por desactivación de cuenta.",
+    CLOSED_BY_ADMIN: "Cerrado por un administrador.",
   };
   return messages[outcome] || "Cerrado.";
 }
