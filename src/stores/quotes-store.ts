@@ -130,7 +130,10 @@ export const useQuotesStore = create<QuotesState>((set, get) => ({
   },
 
   getThread: async (threadId) => {
-    set({ isLoading: true, error: null });
+    // Refresco silencioso si ya hay conversación cargada; solo muestra
+    // estado de carga en la primera apertura (evita parpadeo/skeleton
+    // entre mensajes al enviar o confirmar).
+    set(state => ({ error: null, isLoading: !state.currentThread }));
     try {
       const res = await fetch(`/api/quotes/${encodeURIComponent(threadId)}`, {
         credentials: "include",
