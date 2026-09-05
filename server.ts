@@ -80,6 +80,9 @@ import {
   updateThread,
   updateThreadWithLocking,
   ConcurrencyError,
+  rejectCompletion,
+  withdrawCompletion,
+  validateNotExpired,
 } from "./src/lib/quotes-service";
 import { emitRequestEvent } from "./src/lib/request-events-service.js";
 import { createReputationEvidence } from "./src/lib/reputation-events-service.js";
@@ -1053,6 +1056,13 @@ async function startServer() {
         return res.status(403).json({ success: false, error: "No participás en esta solicitud" });
       }
 
+      if (thread.closure_outcome !== null) {
+        return res.status(403).json({ 
+          success: false,
+          error: "Esta conversación está cerrada. No se pueden enviar más mensajes." 
+        });
+      }
+
       const newMsg = await addMessage(threadId, {
         authorId: userId,
         authorRole: role,
@@ -1163,18 +1173,33 @@ async function startServer() {
       if (mappedRole !== role) return res.status(403).json({ success: false, error: `Tu rol es ${mappedRole}, no ${role}` });
       if (thread.workflow_phase === "CLOSED") return res.status(400).json({ success: false, error: "Esta solicitud ya está cerrada" });
 
-      if (
-        thread.workflow_phase === "COMPLETION_PENDING" &&
-        thread.completionDeadline &&
-        thread.completionDeadline.getTime() <= Date.now()
-      ) {
-        return res.status(409).json({
-          success: false,
-          error: "La ventana de 72 horas expiró; la solicitud se cerrará automáticamente",
-        });
+      try {
+        await validateNotExpired(id);
+      } catch (error: any) {
+        if (error.message === 'TIMEOUT_ALREADY_RESOLVED') {
+          return res.status(409).json({
+            success: false,
+            error: "La ventana de 72 horas expiró; la solicitud se cerrará automáticamente",
+          });
+        }
+        throw error;
       }
 
       await prisma.$transaction(async (tx) => {
+        // Re-read thread inside transaction to get latest state
+        const freshThread = await tx.quoteThread.findUnique({
+          where: { id },
+          select: {
+            confirmedByRequesterAt: true,
+            confirmedByProviderAt: true,
+            workflow_phase: true,
+          },
+        });
+
+        if (!freshThread) {
+          throw new Error('Thread not found');
+        }
+
         const dbTimeResult = await tx.$queryRaw<Array<{ now: Date; deadline: Date }>>`
           SELECT NOW() as now, NOW() + INTERVAL '72 hours' as deadline
         `;
@@ -1184,9 +1209,10 @@ async function startServer() {
         if (role === "REQUESTER") updateData.confirmedByRequesterAt = now;
         else updateData.confirmedByProviderAt = now;
 
+        // Check if the other participant already confirmed (using fresh data from transaction)
         const otherConfirmed =
-          (role === "REQUESTER" && thread.confirmedByProviderAt) ||
-          (role === "PROVIDER" && thread.confirmedByRequesterAt);
+          (role === "REQUESTER" && freshThread.confirmedByProviderAt) ||
+          (role === "PROVIDER" && freshThread.confirmedByRequesterAt);
 
         if (otherConfirmed) {
           updateData.workflow_phase = "CLOSED";
@@ -1195,6 +1221,10 @@ async function startServer() {
         }
 
         updateData.status = otherConfirmed ? "COMPLETED" : "IN_CONVERSATION";
+
+        if (!thread.completionInitiatorUserId) {
+          updateData.completionInitiatorUserId = userId;
+        }
 
         if (version !== undefined) {
           await updateThreadWithLocking(id, version, updateData, tx);
@@ -1255,6 +1285,154 @@ async function startServer() {
       }
       log.error("Complete quote error", { error });
       res.status(500).json({ success: false, error: "Error al confirmar cierre" });
+    }
+  });
+
+  // Sprint 6.1.3: Endpoint para proveedor declinar solicitud (antes de interactuar)
+  app.post("/api/quotes/:id/decline", authenticate, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { userId } = req.user;
+      const { reason } = req.body;
+
+      const thread = await prisma.quoteThread.findUnique({
+        where: { id },
+        include: { 
+          messages: true,
+          provider: true
+        }
+      });
+
+      if (!thread) {
+        return res.status(404).json({ error: 'Solicitud no encontrada' });
+      }
+
+      // Validar que el usuario es el proveedor
+      if (thread.provider.userId !== userId) {
+        return res.status(403).json({ error: 'Solo el proveedor puede declinar esta solicitud' });
+      }
+
+      // Validar que NO haya interacción previa del proveedor
+      const quotationHistory = thread.quotationHistory as any[] || [];
+      const hasProviderInteraction = 
+        thread.messages.some(m => m.authorId === userId) || 
+        quotationHistory.length > 0;
+
+      if (hasProviderInteraction) {
+        return res.status(400).json({ 
+          error: 'No se puede declinar tras interacción. Usá cancelación en su lugar.' 
+        });
+      }
+
+      // Validar que no esté ya cerrado
+      if (thread.workflow_phase === 'CLOSED') {
+        return res.status(400).json({ error: 'Esta solicitud ya está cerrada' });
+      }
+
+      // Transacción atómica: cerrar thread + emitir evento
+      await prisma.$transaction(async (tx) => {
+        await tx.quoteThread.update({
+          where: { id },
+          data: {
+            workflow_phase: 'CLOSED',
+            closure_outcome: 'DECLINED_BY_PROVIDER'
+          }
+        });
+
+        await emitRequestEvent(prisma, {
+          requestId: id,
+          eventType: 'REQUEST_DECLINED',
+          actorUserId: userId,
+          metadata: { reason: reason || 'No especificada' },
+          tx
+        });
+      });
+
+      log.info('Request declined by provider', { threadId: id, providerId: thread.providerId, reason });
+
+      res.json({ 
+        success: true, 
+        message: 'Solicitud declinada exitosamente' 
+      });
+    } catch (error: any) {
+      log.error('Error declining request', { error: error.message });
+      res.status(500).json({ error: 'Error al declinar solicitud' });
+    }
+  });
+
+  app.post("/api/quotes/:id/reject-completion", authenticate, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { note } = req.body;
+      const { userId } = req.user;
+
+      const thread = await prisma.quoteThread.findUnique({
+        where: { id },
+        select: { senderId: true, providerId: true }
+      });
+
+      if (!thread) {
+        return res.status(404).json({ error: 'Thread no encontrado' });
+      }
+
+      const isParticipant = userId === thread.senderId || userId === thread.providerId;
+      if (!isParticipant) {
+        return res.status(403).json({ error: 'No sos parte de esta conversación' });
+      }
+
+      await rejectCompletion(id, userId, note);
+
+      res.json({ success: true });
+    } catch (error: any) {
+      if (error.message === 'TIMEOUT_ALREADY_RESOLVED') {
+        return res.status(409).json({
+          error: 'La ventana de 72 horas expiró; la solicitud se cerrará automáticamente'
+        });
+      }
+      if (error.message.includes('esperar') || error.message.includes('mensaje')) {
+        return res.status(400).json({ error: error.message });
+      }
+      if (error.message.includes('no puede rechazar')) {
+        return res.status(403).json({ error: error.message });
+      }
+      log.error('Error rejecting completion', { error: error.message });
+      res.status(500).json({ error: 'Error al rechazar cierre' });
+    }
+  });
+
+  app.post("/api/quotes/:id/withdraw-completion", authenticate, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { userId } = req.user;
+
+      const thread = await prisma.quoteThread.findUnique({
+        where: { id },
+        select: { senderId: true, providerId: true }
+      });
+
+      if (!thread) {
+        return res.status(404).json({ error: 'Thread no encontrado' });
+      }
+
+      const isParticipant = userId === thread.senderId || userId === thread.providerId;
+      if (!isParticipant) {
+        return res.status(403).json({ error: 'No sos parte de esta conversación' });
+      }
+
+      await withdrawCompletion(id, userId);
+
+      res.json({ success: true });
+    } catch (error: any) {
+      if (error.message === 'TIMEOUT_ALREADY_RESOLVED') {
+        return res.status(409).json({
+          error: 'La ventana de 72 horas expiró; la solicitud se cerrará automáticamente'
+        });
+      }
+      if (error.message.includes('iniciador')) {
+        return res.status(403).json({ error: error.message });
+      }
+      log.error('Error withdrawing completion', { error: error.message });
+      res.status(500).json({ error: 'Error al retirar solicitud de cierre' });
     }
   });
 
