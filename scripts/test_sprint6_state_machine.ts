@@ -291,7 +291,7 @@ async function test10_eventCompletionNotAccepted() {
     requestId: threadId,
     eventType: 'COMPLETION_NOT_ACCEPTED',
     actorUserId: 'test-s6-user-5',
-    metadataJson: { note: 'Todavía no está terminado' },
+    metadata: { note: 'Todavía no está terminado' },
   });
 
   const events = await prisma.requestEvent.findMany({
@@ -320,7 +320,7 @@ async function test11_eventCompletionRequestWithdrawn() {
     requestId: threadId,
     eventType: 'COMPLETION_REQUEST_WITHDRAWN',
     actorUserId: 'test-s6-user-1',
-    metadataJson: {},
+    metadata: {},
   });
 
   const events = await prisma.requestEvent.findMany({
@@ -350,7 +350,7 @@ async function test12_eventRequestDeclined() {
     requestId: threadId,
     eventType: 'REQUEST_DECLINED',
     actorUserId: 'test-s6-user-2',
-    metadataJson: { reason: 'No disponible' },
+    metadata: { reason: 'No disponible' },
   });
 
   const events = await prisma.requestEvent.findMany({
@@ -380,7 +380,7 @@ async function test13_eventRequestExpired() {
     requestId: threadId,
     eventType: 'REQUEST_EXPIRED',
     actorUserId: 'test-s6-user-3',
-    metadataJson: {},
+    metadata: {},
   });
 
   const events = await prisma.requestEvent.findMany({
