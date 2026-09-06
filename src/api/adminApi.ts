@@ -8,6 +8,23 @@ async function adminRequest<T>(path: string, init?: RequestInit): Promise<T> {
 
 export type AdminRiskReportStatus = "OPEN" | "UNDER_REVIEW" | "DISMISSED" | "ESCALATED" | "ACTION_TAKEN";
 
+export interface ModerationActionApproval {
+  id: string;
+  action: "SUSPEND" | "BAN";
+  targetType: "PROVIDER";
+  targetId: string;
+  riskReportId: string | null;
+  requestedByUserId: string;
+  requestedBy?: { id: string; name: string | null };
+  approvedByUserId: string | null;
+  status: "PENDING" | "APPROVED" | "EXPIRED";
+  reason: string;
+  suspendedUntil: string | null;
+  requestedAt: string;
+  approvedAt: string | null;
+  expiresAt: string;
+}
+
 export interface AdminRiskReport {
   id: string;
   providerId: string;
@@ -22,12 +39,28 @@ export interface AdminRiskReport {
     category: string;
   };
   riskScore: number;
-  suspiciousCyclesCount: number;
-  avgSearchTimeSeconds: number | null;
-  avgRequestToCompletionMinutes: number | null;
-  avgMessagesPerRequest: number | null;
-  newAccountsPercentage: number | null;
-  ratingConcentrationScore: number | null;
+  riskLevel: "normal" | "unusual" | "suspicious" | "high-risk";
+  penalty: number;
+  algorithmVersion: string;
+  signals: {
+    suspiciousCyclesCount: number;
+    avgSearchTimeSeconds: number | null;
+    avgRequestToCompletionMinutes: number | null;
+    avgMessagesPerRequest: number | null;
+    newAccountsPercentage: number | null;
+    ratingConcentrationScore: number | null;
+  };
+  signalEvidence: Array<{
+    id: string;
+    signalKey: string;
+    observedValue: number | null;
+    threshold: number | null;
+    contribution: number;
+    windowStart: string;
+    windowEnd: string;
+    sourceRecordIds: string[];
+    algorithmVersion: string;
+  }>;
   status: AdminRiskReportStatus;
   reviewerNotes: string | null;
   recommendedAction: string | null;
@@ -39,8 +72,8 @@ export interface AdminRiskReport {
 
 export interface ModerationAuditLog {
   id: string;
-  actorUserId: string;
-  actor?: { id: string; name: string | null; email: string };
+  actorUserId: string | null;
+  actor?: { id: string; name: string | null; email: string } | null;
   action: string;
   targetType: string;
   targetId: string;
@@ -113,6 +146,17 @@ export const adminApi = {
       method: "POST",
       body: JSON.stringify({ reason }),
     }),
+  requestModerationApproval: (providerId: string, data: { action: "SUSPEND" | "BAN"; reason: string; suspendedUntil?: string; riskReportId?: string }) =>
+    adminRequest<ModerationActionApproval>(`/api/admin/providers/${encodeURIComponent(providerId)}/moderation-approvals`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  approveModerationAction: (approvalId: string) =>
+    adminRequest(`/api/admin/moderation-approvals/${encodeURIComponent(approvalId)}/approve`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    }),
+  getModerationApprovals: () => adminRequest<ModerationActionApproval[]>("/api/admin/moderation-approvals"),
   reactivateProvider: (providerId: string, reason: string) =>
     adminRequest(`/api/admin/providers/${encodeURIComponent(providerId)}/reactivate`, {
       method: "POST",

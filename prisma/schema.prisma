@@ -87,6 +87,8 @@ model User {
   providers             Provider[]
   roleAssignments       RoleAssignment[]
   moderationAuditLogs   ModerationAuditLog[] @relation("ModerationAuditActor")
+  requestedModerationActions ModerationActionApproval[] @relation("ModerationApprovalRequester")
+  approvedModerationActions ModerationActionApproval[] @relation("ModerationApprovalApprover")
   providerStatusUpdates Provider[]           @relation("ProviderStatusUpdatedBy")
   escalatedRiskReports  RiskReport[]         @relation("RiskReportEscalatedBy")
   resolvedRiskReports   RiskReport[]         @relation("RiskReportResolvedBy")
@@ -225,6 +227,9 @@ model Provider {
   id     String @id @default(cuid())
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  riskLineageRootId String?
+  riskLineageRoot   Provider?  @relation("ProviderRiskLineage", fields: [riskLineageRootId], references: [id], onDelete: SetNull)
+  riskLineageMembers Provider[] @relation("ProviderRiskLineage")
 
   displayName   String
   slug          String  @unique
@@ -289,6 +294,7 @@ model Provider {
   categoryLinks       ProviderCategory[]
   trustScoreSnapshots TrustScoreSnapshot[]
   riskReports         RiskReport[]
+  riskSignalEvidence  RiskSignalEvidence[]
   reputationEvents    ReputationEvent[]
   privateFeedback     ProviderPrivateFeedback[]
 
@@ -300,6 +306,7 @@ model Provider {
   @@index([status])
   @@index([statusUpdatedById])
   @@index([userId])
+  @@index([riskLineageRootId])
   @@index([slug])
 }
 
@@ -511,6 +518,9 @@ model RiskReport {
   providerId                    String
   provider                      Provider  @relation(fields: [providerId], references: [id], onDelete: Cascade)
   riskScore                     Float
+  riskLevel                     String    @default("normal")
+  penalty                       Int       @default(0)
+  algorithmVersion              String    @default("risk-v1.0.0")
   suspiciousCyclesCount         Int       @default(0)
   avgSearchTimeSeconds          Float?
   avgRequestToCompletionMinutes Float?
@@ -530,6 +540,9 @@ model RiskReport {
   resolvedAt                    DateTime?
   resolvedByUserId              String?
   resolvedBy                    User?     @relation("RiskReportResolvedBy", fields: [resolvedByUserId], references: [id], onDelete: SetNull)
+  signalEvidence                RiskSignalEvidence[]
+  reputationEvents              ReputationEvent[]
+  moderationApprovals           ModerationActionApproval[]
 
   @@index([providerId])
   @@index([status])
@@ -539,10 +552,33 @@ model RiskReport {
   @@index([providerId, status, generatedAt])
 }
 
+model RiskSignalEvidence {
+  id              String      @id @default(cuid())
+  providerId      String
+  provider        Provider    @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  riskReportId    String?
+  riskReport      RiskReport? @relation(fields: [riskReportId], references: [id], onDelete: SetNull)
+  signalKey       String
+  observedValue   Float?
+  threshold       Float?
+  contribution    Float
+  windowStart     DateTime
+  windowEnd       DateTime
+  sourceEventIds  Json?
+  sourceRecordIds Json?
+  algorithmVersion String
+  createdAt       DateTime    @default(now())
+
+  @@index([providerId, createdAt])
+  @@index([providerId, signalKey, createdAt])
+  @@index([riskReportId])
+  @@index([algorithmVersion])
+}
+
 model ModerationAuditLog {
   id          String   @id @default(cuid())
-  actorUserId String
-  actor       User     @relation("ModerationAuditActor", fields: [actorUserId], references: [id], onDelete: Cascade)
+  actorUserId String?
+  actor       User?    @relation("ModerationAuditActor", fields: [actorUserId], references: [id], onDelete: SetNull)
   action      String
   targetType  String
   targetId    String
@@ -554,6 +590,31 @@ model ModerationAuditLog {
   @@index([action])
   @@index([targetType, targetId])
   @@index([createdAt])
+}
+
+model ModerationActionApproval {
+  id                String   @id @default(cuid())
+  action            String
+  targetType        String
+  targetId          String
+  riskReportId      String?
+  riskReport        RiskReport? @relation(fields: [riskReportId], references: [id], onDelete: SetNull)
+  requestedByUserId String
+  requestedBy       User     @relation("ModerationApprovalRequester", fields: [requestedByUserId], references: [id], onDelete: Cascade)
+  approvedByUserId  String?
+  approvedBy        User?    @relation("ModerationApprovalApprover", fields: [approvedByUserId], references: [id], onDelete: SetNull)
+  status            String   @default("PENDING")
+  reason            String   @db.Text
+  suspendedUntil    DateTime?
+  requestedAt       DateTime @default(now())
+  approvedAt        DateTime?
+  expiresAt         DateTime
+
+  @@index([targetType, targetId, status])
+  @@index([riskReportId])
+  @@index([requestedByUserId, status])
+  @@index([approvedByUserId])
+  @@index([expiresAt])
 }
 
 // ──────────────────────────────────────────────────────────
@@ -821,6 +882,8 @@ model ReputationEvent {
   evidenceWeight       Float
   sourceEventId        String?
   sourceEvent          RequestEvent? @relation(fields: [sourceEventId], references: [id], onDelete: SetNull)
+  riskReportId         String?
+  riskReport           RiskReport?   @relation(fields: [riskReportId], references: [id], onDelete: SetNull)
   algorithmVersion     String        @default("trust-v2.0.0")
   invalidatedAt        DateTime?
   invalidatedByAdminId String?
@@ -833,6 +896,8 @@ model ReputationEvent {
   @@index([evidenceType])
   @@index([algorithmVersion])
   @@index([sourceEventId])
+  @@index([riskReportId])
+  @@unique([riskReportId, evidenceType])
 }
 
 // ──────────────────────────────────────────────────────────

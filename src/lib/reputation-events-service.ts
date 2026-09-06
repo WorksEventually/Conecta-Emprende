@@ -9,6 +9,7 @@ export interface CreateReputationEvidenceParams {
   evidenceType: EvidenceType;
   evidenceWeight: number;
   sourceEventId?: string;
+  riskReportId?: string;
   algorithmVersion?: string;
   tx?: Prisma.TransactionClient;
 }
@@ -45,6 +46,7 @@ export async function createReputationEvidence(
     evidenceType,
     evidenceWeight,
     sourceEventId,
+    riskReportId,
     algorithmVersion = 'trust-v2.0.0',
     tx,
   } = params;
@@ -72,6 +74,21 @@ export async function createReputationEvidence(
     }
   }
 
+  if (riskReportId) {
+    const existing = await client.reputationEvent.findFirst({
+      where: { riskReportId, evidenceType },
+    });
+
+    if (existing) {
+      log.info('Risk penalty evidence already exists (idempotent)', {
+        evidenceId: existing.id,
+        riskReportId,
+        evidenceType,
+      });
+      return { id: existing.id, isNew: false };
+    }
+  }
+
   const evidence = await client.reputationEvent.create({
     data: {
       providerId,
@@ -79,6 +96,7 @@ export async function createReputationEvidence(
       evidenceType,
       evidenceWeight,
       sourceEventId,
+      riskReportId,
       algorithmVersion,
     },
   });

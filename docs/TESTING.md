@@ -2,13 +2,13 @@
 
 Guía completa de la suite de pruebas del proyecto TradeArc MVP.
 
-**Última actualización:** 2026-09-03 (Sprint 4)
+**Última actualización:** 2026-09-06 (Sprint 9 completado)
 
 ---
 
 ## 📊 Estructura de Tests
 
-El proyecto cuenta con **60 tests** organizados en **5 suites**:
+El proyecto cuenta con **84 tests** organizados en **6 suites**:
 
 ### Tests Unitarios (17 tests)
 - **Trust Score v2** (8 tests) - `test:trust-v2`
@@ -16,7 +16,7 @@ El proyecto cuenta con **60 tests** organizados en **5 suites**:
   - Componentes: Completion Rate, Response Time, Reviews, Job History
   - Casos límite y penalizaciones
 
-- **Risk Telemetry** (9 tests) - `test:risk-telemetry`
+- **Risk Telemetry** (16 tests) - `test:risk-telemetry`
   - Métricas de riesgo (early_close_rate, dispute_rate)
   - Semántica de valores null vs 0
   - Cálculo de risk_level
@@ -32,8 +32,18 @@ El proyecto cuenta con **60 tests** organizados en **5 suites**:
   - Integración con Trust Score
   - Penalizaciones por alto riesgo
 
-### Tests Smoke (21 tests)
-- **Admin Permissions** (21 tests) - `test:admin-permissions`
+- **Sprint 9 Risk** (E2E) - `test:sprint9-risk`
+  - DTOs administrativos sanitizados
+  - Solicitud y aprobación de suspensión/baneo
+  - Protección contra autoaprobación
+   - Persistencia de evidencia de señales
+   - Resolución de reportes al aprobar una sanción
+   - Expiración de aprobaciones con auditoría
+   - Carrera entre aprobadores concurrentes
+   - Linaje persistente de perfiles relacionados
+
+### Tests Smoke (24 tests)
+- **Admin Permissions** (25 tests) - `test:admin-permissions`
   - Sistema RBAC (3 roles: USER, ADMIN_REVIEWER, SUPER_ADMIN)
   - Permisos de lectura/escritura por endpoint
   - Casos de autorización y denegación
@@ -64,7 +74,8 @@ npm run test:trust-v2           # Trust Score v2 (unit)
 npm run test:risk-telemetry      # Risk Telemetry (unit)
 npm run test:admin-permissions   # Admin Permissions (smoke)
 npm run test:sprint-e2e          # Sprint 2 E2E (e2e)
-npm run test:risk-integration    # Risk Integration (e2e)
+  npm run test:risk-integration    # Risk Integration (e2e)
+  npm run test:sprint9-risk        # Sprint 9 Risk (e2e)
 ```
 
 ---
@@ -376,7 +387,7 @@ npm test && echo "Tests passed" || echo "Tests failed"
 
 ---
 
-**Última actualización:** 2026-09-03 05:18 UTC  
-**Sprint:** 4 (Cleanup + Suite Unificada)  
-**Cobertura:** 60 tests (17 unit, 22 e2e, 21 smoke)  
+**Última actualización:** 2026-09-06 UTC
+**Sprint:** 9 (Sistema de riesgo completo)
+**Cobertura:** 84 tests base más escenarios Sprint 9 de expiración, concurrencia, evidencia y linaje
 **Estrategia:** Fail-safe, fresh DB, real server

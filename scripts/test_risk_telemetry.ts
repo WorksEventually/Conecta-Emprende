@@ -8,7 +8,7 @@
  *   npm run test:risk-telemetry
  */
 import assert from "node:assert/strict";
-import { calculateRiskScore } from "../src/domain/risk/calculateRiskScore";
+import { calculateRiskScore, classifyRiskScore, riskPenaltyForLevel, RISK_SIGNAL_CATALOG } from "../src/domain/risk/calculateRiskScore";
 
 console.log("→ Ejecutando tests de Risk Telemetry...\n");
 
@@ -24,6 +24,7 @@ const cleanProvider = calculateRiskScore({
 assert.ok(cleanProvider.score < 30, "T1: Proveedor limpio debe tener score <30");
 assert.equal(cleanProvider.level, "normal", "T1: Nivel debe ser 'normal'");
 assert.equal(cleanProvider.shouldGenerateReport, false, "T1: No debe generar reporte");
+assert.equal(cleanProvider.penalty, 0, "T1: Riesgo normal no debe producir penalización");
 console.log(`✓ Test 1: Proveedor limpio → score=${cleanProvider.score}, level=${cleanProvider.level}`);
 
 // Test 2: Proveedor sospechoso (score ≥70)
@@ -39,8 +40,9 @@ const suspiciousProvider = calculateRiskScore({
   ratingConcentrationScore: 85,
 });
 assert.ok(suspiciousProvider.score >= 70, "T2: Proveedor sospechoso debe tener score ≥70");
-assert.ok(["suspicious", "high-risk"].includes(suspiciousProvider.level), "T2: Nivel debe ser 'suspicious' o 'high-risk'");
+assert.equal(suspiciousProvider.level, "high-risk", "T2: Score ≥70 debe ser 'high-risk'");
 assert.equal(suspiciousProvider.shouldGenerateReport, true, "T2: Debe generar reporte automático");
+assert.equal(suspiciousProvider.penalty, 40, "T2: Riesgo alto debe mapear a 40 puntos");
 console.log(`✓ Test 2: Proveedor sospechoso → score=${suspiciousProvider.score}, level=${suspiciousProvider.level}`);
 
 // Test 3: Proveedor sin datos (valores en 0)
@@ -138,10 +140,61 @@ const unavailableSignals = calculateRiskScore({
   newAccountsPercentage: null,
   repeatedTargetProviderScore: null,
   ratingConcentrationScore: null,
+  synchronizedCompletionScore: null,
+  reviewBurstScore: null,
+  accountClusterScore: null,
+  profileRecreationScore: null,
+  actionVolumeScore: null,
 });
 assert.equal(unavailableSignals.score, 0, "T9: null (sin datos) no debe sumar puntos");
 assert.equal(unavailableSignals.level, "normal", "T9: Nivel debe ser 'normal'");
 assert.equal(unavailableSignals.shouldGenerateReport, false, "T9: No debe generar reporte");
+assert.equal(unavailableSignals.penalty, 0, "T9: Señales no disponibles no deben producir penalización");
 console.log(`✓ Test 9: Señales no disponibles (null) → score=${unavailableSignals.score}`);
 
-console.log("\n✅ Todos los tests de Risk Telemetry pasaron (9 casos)");
+// Tests 10-15: bandas normativas y penalización derivada.
+const normativeBands = [
+  [30, "normal", 0],
+  [31, "unusual", 10],
+  [50, "unusual", 10],
+  [51, "suspicious", 20],
+  [69, "suspicious", 20],
+  [70, "high-risk", 40],
+] as const;
+
+for (const [score, expectedLevel, expectedPenalty] of normativeBands) {
+  assert.equal(classifyRiskScore(score), expectedLevel, `Banda ${score} debe ser ${expectedLevel}`);
+  assert.equal(riskPenaltyForLevel(expectedLevel), expectedPenalty, `Banda ${score} debe mapear a ${expectedPenalty}`);
+}
+
+assert.equal(classifyRiskScore(100), "high-risk", "Score 100 debe ser high-risk");
+assert.equal(riskPenaltyForLevel("normal"), 0);
+assert.equal(riskPenaltyForLevel("unusual"), 10);
+assert.equal(riskPenaltyForLevel("suspicious"), 20);
+assert.equal(riskPenaltyForLevel("high-risk"), 40);
+console.log("✓ Tests 10-15: bandas 30/31/50/51/69/70/100 y penalización 0/10/20/40");
+
+assert.equal(RISK_SIGNAL_CATALOG.length, 11, "T17: La matriz canónica debe tener 11 señales");
+assert.equal(RISK_SIGNAL_CATALOG.find((signal) => signal.key === "FAST_SEARCH")?.source.includes("no disponible"), true);
+assert.ok(RISK_SIGNAL_CATALOG.every((signal) => signal.confirmationRequired), "T17: Toda señal requiere confirmación humana");
+console.log("✓ Test 17: matriz canónica de 11 señales con fuente no disponible explícita");
+
+const additionalSignals = calculateRiskScore({
+  avgSearchTimeSeconds: null,
+  avgRequestToCompletionMinutes: null,
+  avgMessagesPerRequest: null,
+  newAccountsPercentage: null,
+  repeatedTargetProviderScore: null,
+  ratingConcentrationScore: null,
+  synchronizedCompletionScore: 100,
+  reviewBurstScore: 100,
+  accountClusterScore: 100,
+  profileRecreationScore: 100,
+  actionVolumeScore: 100,
+});
+assert.equal(additionalSignals.signals.length, 11, "T16: El contrato debe incluir 11 señales");
+assert.ok(additionalSignals.score >= 70, "T16: Las señales adicionales deben poder generar riesgo alto");
+assert.equal(additionalSignals.level, "high-risk");
+console.log("✓ Test 16: contrato de 11 señales adicionales tipado y puntuable");
+
+console.log("\n✅ Todos los tests de Risk Telemetry pasaron (17 casos)");

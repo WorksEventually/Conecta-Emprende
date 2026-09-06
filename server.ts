@@ -33,6 +33,8 @@ import {
   riskReportEscalateSchema,
   riskReportQuerySchema,
   riskReportStatusSchema,
+  moderationApprovalActionSchema,
+  moderationApprovalDecisionSchema,
 } from "./src/lib/api-schema";
 import {
   hashPassword,
@@ -285,7 +287,7 @@ async function startServer() {
   };
 
   async function createModerationAuditLog(data: {
-    actorUserId: string;
+    actorUserId?: string | null;
     action: string;
     targetType: string;
     targetId: string;
@@ -294,13 +296,52 @@ async function startServer() {
   }) {
     return prisma.moderationAuditLog.create({
       data: {
-        actor: { connect: { id: data.actorUserId } },
+        ...(data.actorUserId
+          ? { actor: { connect: { id: data.actorUserId } } }
+          : { actorUserId: null }),
         action: data.action,
         targetType: data.targetType,
         targetId: data.targetId,
         reason: data.reason,
         metadata: data.metadata as Prisma.InputJsonValue | undefined,
       },
+    });
+  }
+
+  async function expirePendingModerationApprovals(now = new Date()): Promise<number> {
+    const candidates = await prisma.moderationActionApproval.findMany({
+      where: { status: "PENDING", expiresAt: { lte: now } },
+      select: { id: true, action: true, targetId: true },
+    });
+    if (candidates.length === 0) return 0;
+
+    return prisma.$transaction(async (tx) => {
+      let expiredCount = 0;
+      for (const approval of candidates) {
+        const expired = await tx.moderationActionApproval.updateMany({
+          where: { id: approval.id, status: "PENDING", expiresAt: { lte: now } },
+          data: { status: "EXPIRED" },
+        });
+        if (expired.count !== 1) continue;
+
+        await tx.moderationAuditLog.create({
+          data: {
+            actorUserId: null,
+            action: "MODERATION_APPROVAL_EXPIRED",
+            targetType: "PROVIDER",
+            targetId: approval.targetId,
+            reason: "La aprobación superó su ventana de validez",
+            metadata: {
+              approvalId: approval.id,
+              action: approval.action,
+              expirationMode: "SYSTEM_SWEEP",
+              actorType: "SYSTEM",
+            } as Prisma.InputJsonValue,
+          },
+        });
+        expiredCount += 1;
+      }
+      return expiredCount;
     });
   }
 
@@ -1561,19 +1602,72 @@ async function startServer() {
     reviewedBy: { select: { id: true, name: true, email: true } },
     escalatedBy: { select: { id: true, name: true, email: true } },
     resolvedBy: { select: { id: true, name: true, email: true } },
+    signalEvidence: {
+      select: {
+        id: true,
+        signalKey: true,
+        observedValue: true,
+        threshold: true,
+        contribution: true,
+        windowStart: true,
+         windowEnd: true,
+         sourceRecordIds: true,
+         algorithmVersion: true,
+      },
+      orderBy: { createdAt: "desc" },
+    },
   } as const;
+
+  function toRiskReportDto(report: any) {
+    return {
+      id: report.id,
+      providerId: report.providerId,
+      provider: report.provider,
+      riskScore: report.riskScore,
+      riskLevel: report.riskLevel,
+      penalty: report.penalty,
+      algorithmVersion: report.algorithmVersion,
+      signals: {
+        suspiciousCyclesCount: report.suspiciousCyclesCount,
+        avgSearchTimeSeconds: report.avgSearchTimeSeconds,
+        avgRequestToCompletionMinutes: report.avgRequestToCompletionMinutes,
+        avgMessagesPerRequest: report.avgMessagesPerRequest,
+        newAccountsPercentage: report.newAccountsPercentage,
+        ratingConcentrationScore: report.ratingConcentrationScore,
+      },
+      signalEvidence: report.signalEvidence,
+      status: report.status,
+      reviewerNotes: report.reviewerNotes,
+      recommendedAction: report.recommendedAction,
+      generatedAt: report.generatedAt,
+      reviewedAt: report.reviewedAt,
+      escalatedAt: report.escalatedAt,
+      resolvedAt: report.resolvedAt,
+      reviewedBy: report.reviewedBy,
+      escalatedBy: report.escalatedBy,
+      resolvedBy: report.resolvedBy,
+    };
+  }
 
   app.get("/api/admin/risk-reports", authenticate, requireAdminReviewerOrSuperAdmin, async (req, res) => {
     try {
       const parsed = riskReportQuerySchema.safeParse(req.query);
       if (!parsed.success) return res.status(400).json({ success: false, error: "Filtro de estado inválido", details: parsed.error.issues });
       const { status } = parsed.data;
-      const reports = await prisma.riskReport.findMany({
+       const reports = await prisma.riskReport.findMany({
         where: status ? { status } : undefined,
         include: riskReportInclude,
-        orderBy: [{ status: "asc" }, { generatedAt: "desc" }],
-      });
-      res.json({ success: true, data: reports });
+         orderBy: [{ status: "asc" }, { generatedAt: "desc" }],
+       });
+       await createModerationAuditLog({
+         actorUserId: req.user.userId,
+         action: "RISK_REPORTS_ACCESSED",
+         targetType: "RISK_REPORT_COLLECTION",
+         targetId: status ?? "ALL",
+         reason: "Acceso administrativo a reportes de riesgo",
+         metadata: { status: status ?? null, resultCount: reports.length },
+       });
+        res.json({ success: true, data: reports.map(toRiskReportDto) });
     } catch (error) {
       console.error("Admin reports error:", error);
       res.status(500).json({ success: false, error: "Error al obtener reportes" });
@@ -1586,8 +1680,16 @@ async function startServer() {
         where: { id: req.params.id },
         include: riskReportInclude,
       });
-      if (!report) return res.status(404).json({ success: false, error: "Reporte no encontrado" });
-      res.json({ success: true, data: report });
+       if (!report) return res.status(404).json({ success: false, error: "Reporte no encontrado" });
+       await createModerationAuditLog({
+         actorUserId: req.user.userId,
+         action: "RISK_REPORT_ACCESSED",
+         targetType: "RISK_REPORT",
+         targetId: report.id,
+         reason: "Acceso administrativo al detalle de un reporte de riesgo",
+         metadata: { providerId: report.providerId },
+       });
+        res.json({ success: true, data: toRiskReportDto(report) });
     } catch (error) {
       console.error("Admin report detail error:", error);
       res.status(500).json({ success: false, error: "Error al obtener el reporte" });
@@ -1610,6 +1712,18 @@ async function startServer() {
         return res.status(400).json({ success: false, error: "Agregá una razón o nota para esta decisión" });
       }
 
+      const currentReport = await prisma.riskReport.findUnique({
+        where: { id: req.params.id },
+        select: { id: true, providerId: true, status: true, penalty: true },
+      });
+      if (!currentReport) return res.status(404).json({ success: false, error: "Reporte no encontrado" });
+      if (currentReport.status === "ACTION_TAKEN") {
+        return res.status(409).json({ success: false, error: "Este reporte ya tiene una acción confirmada" });
+      }
+      if (currentReport.status === status) {
+        return res.status(409).json({ success: false, error: "El reporte ya se encuentra en ese estado" });
+      }
+
       const updateData: Record<string, unknown> = {
         status,
         reviewerNotes: reviewerNotes?.trim() || reason?.trim() || null,
@@ -1627,23 +1741,52 @@ async function startServer() {
         updateData.resolvedByUserId = userId;
       }
 
-      const report = await prisma.riskReport.update({
-        where: { id: req.params.id },
-        data: updateData,
-        include: riskReportInclude,
+      const report = await prisma.$transaction(async (tx) => {
+        const claimed = await tx.riskReport.updateMany({
+          where: { id: req.params.id, status: currentReport.status },
+          data: updateData,
+        });
+        if (claimed.count !== 1) throw new Error("REPORT_ALREADY_PROCESSED");
+
+        const updatedReport = await tx.riskReport.findUniqueOrThrow({
+          where: { id: req.params.id },
+          include: riskReportInclude,
+        });
+
+        if (status === "ACTION_TAKEN" && currentReport.penalty > 0) {
+          await createReputationEvidence(tx, {
+            providerId: currentReport.providerId,
+            riskReportId: currentReport.id,
+            evidenceType: "PENALTY_SUSPICIOUS_ACTIVITY",
+            evidenceWeight: currentReport.penalty,
+            algorithmVersion: "trust-v2.0.0",
+            tx,
+          });
+        }
+
+        await tx.moderationAuditLog.create({
+          data: {
+            actorUserId: userId,
+            action: `REPORT_${status}`,
+            targetType: "RISK_REPORT",
+            targetId: updatedReport.id,
+            reason: reason?.trim() || reviewerNotes?.trim() || `Reporte marcado como ${status}`,
+            metadata: { providerId: updatedReport.providerId, status },
+          },
+        });
+
+        return updatedReport;
       });
 
-      await createModerationAuditLog({
-        actorUserId: userId,
-        action: `REPORT_${status}`,
-        targetType: "RISK_REPORT",
-        targetId: report.id,
-        reason: reason?.trim() || reviewerNotes?.trim() || `Reporte marcado como ${status}`,
-        metadata: { providerId: report.providerId, status },
-      });
+      if (["DISMISSED", "ESCALATED", "ACTION_TAKEN"].includes(status)) {
+        await recalculateProviderTrustScore(currentReport.providerId);
+      }
 
-      res.json({ success: true, data: report });
+      res.json({ success: true, data: toRiskReportDto(report) });
     } catch (error) {
+      if ((error as Error).message === "REPORT_ALREADY_PROCESSED") {
+        return res.status(409).json({ success: false, error: "Este reporte ya fue actualizado por otra revisión" });
+      }
       console.error("Update risk report status error:", error);
       res.status(500).json({ success: false, error: "Error al actualizar el reporte" });
     }
@@ -1657,30 +1800,43 @@ async function startServer() {
       const { reviewerNotes, reason } = parsed.data;
       const note = (reviewerNotes?.trim() || reason?.trim())!;
 
-      const report = await prisma.riskReport.update({
-        where: { id: req.params.id },
-        data: {
-          status: "ESCALATED",
-          reviewerNotes: note,
-          reviewedAt: new Date(),
-          reviewedByUserId: userId,
-          escalatedAt: new Date(),
-          escalatedByUserId: userId,
-        },
-        include: riskReportInclude,
+      const report = await prisma.$transaction(async (tx) => {
+        const claimed = await tx.riskReport.updateMany({
+          where: { id: req.params.id, status: { in: ["OPEN", "UNDER_REVIEW"] } },
+          data: {
+            status: "ESCALATED",
+            reviewerNotes: note,
+            reviewedAt: new Date(),
+            reviewedByUserId: userId,
+            escalatedAt: new Date(),
+            escalatedByUserId: userId,
+          },
+        });
+        if (claimed.count !== 1) throw new Error("REPORT_ALREADY_PROCESSED");
+        const escalated = await tx.riskReport.findUniqueOrThrow({
+          where: { id: req.params.id },
+          include: riskReportInclude,
+        });
+        await tx.moderationAuditLog.create({
+          data: {
+            actorUserId: userId,
+            action: "REPORT_ESCALATED",
+            targetType: "RISK_REPORT",
+            targetId: escalated.id,
+            reason: note,
+            metadata: { providerId: escalated.providerId, status: "ESCALATED" },
+          },
+        });
+        return escalated;
       });
 
-      await createModerationAuditLog({
-        actorUserId: userId,
-        action: "REPORT_ESCALATED",
-        targetType: "RISK_REPORT",
-        targetId: report.id,
-        reason: note,
-        metadata: { providerId: report.providerId, status: "ESCALATED" },
-      });
+      await recalculateProviderTrustScore(report.providerId);
 
-      res.json({ success: true, data: report });
+      res.json({ success: true, data: toRiskReportDto(report) });
     } catch (error) {
+      if ((error as Error).message === "REPORT_ALREADY_PROCESSED") {
+        return res.status(409).json({ success: false, error: "Este reporte ya fue actualizado por otra revisión" });
+      }
       console.error("Escalate risk report error:", error);
       res.status(500).json({ success: false, error: "Error al escalar el reporte" });
     }
@@ -1736,14 +1892,223 @@ async function startServer() {
     return updated;
   }
 
+  app.post("/api/admin/providers/:providerId/moderation-approvals", authenticate, requireAdminReviewerOrSuperAdmin, async (req, res) => {
+    try {
+      const parsed = moderationApprovalActionSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ success: false, error: "Los datos de aprobación son inválidos", details: parsed.error.issues });
+      }
+
+      await expirePendingModerationApprovals();
+
+      const { userId } = req.user;
+      const provider = await prisma.provider.findUnique({
+        where: { id: req.params.providerId },
+        select: { id: true, status: true },
+      });
+      if (!provider) return res.status(404).json({ success: false, error: "Proveedor no encontrado" });
+
+      const targetStatus: ProviderStatus = parsed.data.action === "BAN" ? "BANNED" : "SUSPENDED";
+      if (!canTransition(provider.status, targetStatus)) {
+        return res.status(409).json({ success: false, error: "No se puede solicitar esta acción desde el estado actual del proveedor" });
+      }
+      if (parsed.data.riskReportId) {
+        const report = await prisma.riskReport.findFirst({
+          where: { id: parsed.data.riskReportId, providerId: provider.id, status: { in: ["OPEN", "UNDER_REVIEW", "ESCALATED"] } },
+          select: { id: true },
+        });
+        if (!report) {
+          return res.status(409).json({ success: false, error: "El reporte de riesgo no está disponible para esta acción" });
+        }
+      }
+
+      const approval = await prisma.$transaction(async (tx) => {
+        const created = await tx.moderationActionApproval.create({
+          data: {
+            action: parsed.data.action,
+            targetType: "PROVIDER",
+            targetId: provider.id,
+            riskReportId: parsed.data.riskReportId,
+            requestedByUserId: userId,
+            reason: parsed.data.reason,
+            suspendedUntil: parsed.data.suspendedUntil ? new Date(parsed.data.suspendedUntil) : null,
+            expiresAt: new Date(Date.now() + 15 * 60 * 1000),
+          },
+        });
+        await tx.moderationAuditLog.create({
+          data: {
+            actorUserId: userId,
+            action: "MODERATION_APPROVAL_REQUESTED",
+            targetType: "PROVIDER",
+            targetId: provider.id,
+            reason: parsed.data.reason,
+            metadata: { approvalId: created.id, action: parsed.data.action },
+          },
+        });
+        return created;
+      });
+
+      return res.status(202).json({
+        success: true,
+        message: "La acción requiere aprobación de un segundo administrador",
+        data: approval,
+      });
+    } catch (error) {
+      console.error("Request moderation approval error:", error);
+      res.status(500).json({ success: false, error: "Error al solicitar aprobación de moderación" });
+    }
+  });
+
+  app.get("/api/admin/moderation-approvals", authenticate, requireAdminReviewerOrSuperAdmin, async (_req, res) => {
+    try {
+      await expirePendingModerationApprovals();
+
+      const approvals = await prisma.moderationActionApproval.findMany({
+        where: { status: "PENDING", expiresAt: { gt: new Date() } },
+        orderBy: { requestedAt: "asc" },
+        include: {
+          requestedBy: { select: { id: true, name: true } },
+        },
+      });
+      res.json({ success: true, data: approvals });
+    } catch (error) {
+      console.error("List moderation approvals error:", error);
+      res.status(500).json({ success: false, error: "Error al obtener aprobaciones pendientes" });
+    }
+  });
+
+  app.post("/api/admin/moderation-approvals/:approvalId/approve", authenticate, requireSuperAdmin, async (req, res) => {
+    try {
+      const parsed = moderationApprovalDecisionSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ success: false, error: "La aprobación no es válida", details: parsed.error.issues });
+
+      await expirePendingModerationApprovals();
+
+      const { userId } = req.user;
+      const approval = await prisma.moderationActionApproval.findUnique({
+        where: { id: req.params.approvalId },
+      });
+      if (!approval) return res.status(404).json({ success: false, error: "Solicitud de aprobación no encontrada" });
+      if (approval.requestedByUserId === userId) {
+        return res.status(403).json({ success: false, error: "La persona que solicita la acción no puede aprobarla" });
+      }
+      if (approval.status === "EXPIRED") {
+        return res.status(409).json({ success: false, error: "La solicitud de aprobación expiró" });
+      }
+      if (approval.status !== "PENDING") {
+        return res.status(409).json({ success: false, error: "Esta solicitud de aprobación ya fue procesada" });
+      }
+      if (approval.expiresAt <= new Date()) {
+        await expirePendingModerationApprovals();
+        return res.status(409).json({ success: false, error: "La solicitud de aprobación expiró" });
+      }
+
+      const targetStatus: ProviderStatus = approval.action === "BAN" ? "BANNED" : "SUSPENDED";
+      const result = await prisma.$transaction(async (tx) => {
+        const claimed = await tx.moderationActionApproval.updateMany({
+          where: {
+            id: approval.id,
+            status: "PENDING",
+            expiresAt: { gt: new Date() },
+            requestedByUserId: { not: userId },
+          },
+          data: { status: "APPROVED", approvedByUserId: userId, approvedAt: new Date() },
+        });
+        if (claimed.count !== 1) throw new Error("APPROVAL_ALREADY_PROCESSED");
+
+        const provider = await tx.provider.findUnique({
+          where: { id: approval.targetId },
+          select: { id: true, status: true },
+        });
+        if (!provider) throw new Error("PROVIDER_NOT_FOUND");
+        if (!canTransition(provider.status, targetStatus)) throw new Error("INVALID_TRANSITION");
+
+        const updated = await tx.provider.update({
+          where: { id: provider.id },
+          data: {
+            status: targetStatus,
+            statusReason: approval.reason,
+            suspendedUntil: targetStatus === "SUSPENDED" ? approval.suspendedUntil : null,
+            statusUpdatedAt: new Date(),
+            statusUpdatedById: userId,
+          },
+        });
+        await tx.moderationAuditLog.create({
+          data: {
+            actorUserId: userId,
+            action: targetStatus === "BANNED" ? "PROVIDER_BANNED_APPROVED" : "PROVIDER_SUSPENDED_APPROVED",
+            targetType: "PROVIDER",
+            targetId: provider.id,
+            reason: approval.reason,
+            metadata: { approvalId: approval.id, requestedByUserId: approval.requestedByUserId },
+          },
+        });
+
+        if (approval.riskReportId) {
+          const report = await tx.riskReport.findFirst({
+            where: {
+              id: approval.riskReportId,
+              providerId: provider.id,
+              status: { in: ["OPEN", "UNDER_REVIEW", "ESCALATED"] },
+            },
+            select: { id: true, penalty: true },
+          });
+          if (!report) throw new Error("REPORT_ALREADY_PROCESSED");
+          const resolved = await tx.riskReport.updateMany({
+            where: { id: report.id, status: { in: ["OPEN", "UNDER_REVIEW", "ESCALATED"] } },
+            data: {
+              status: "ACTION_TAKEN",
+              reviewerNotes: approval.reason,
+              reviewedAt: new Date(),
+              reviewedByUserId: userId,
+              resolvedAt: new Date(),
+              resolvedByUserId: userId,
+            },
+          });
+          if (resolved.count !== 1) throw new Error("REPORT_ALREADY_PROCESSED");
+          if (report.penalty > 0) {
+            await createReputationEvidence(tx, {
+              providerId: provider.id,
+              riskReportId: report.id,
+              evidenceType: "PENALTY_SUSPICIOUS_ACTIVITY",
+              evidenceWeight: report.penalty,
+              algorithmVersion: "trust-v2.0.0",
+              tx,
+            });
+          }
+          await tx.moderationAuditLog.create({
+            data: {
+              actorUserId: userId,
+              action: "REPORT_ACTION_TAKEN",
+              targetType: "RISK_REPORT",
+              targetId: report.id,
+              reason: approval.reason,
+              metadata: { providerId: provider.id, approvalId: approval.id },
+            },
+          });
+        }
+        return updated;
+      });
+
+      await recalculateProviderTrustScore(approval.targetId);
+
+      return res.json({ success: true, data: result });
+    } catch (error) {
+      const message = (error as Error).message;
+      if (message === "APPROVAL_ALREADY_PROCESSED") return res.status(409).json({ success: false, error: "Esta solicitud de aprobación ya fue procesada" });
+      if (message === "PROVIDER_NOT_FOUND") return res.status(404).json({ success: false, error: "Proveedor no encontrado" });
+      if (message === "INVALID_TRANSITION") return res.status(409).json({ success: false, error: "No se puede ejecutar la acción desde el estado actual del proveedor" });
+      if (message === "REPORT_ALREADY_PROCESSED") return res.status(409).json({ success: false, error: "El reporte asociado ya fue resuelto" });
+      console.error("Approve moderation error:", error);
+      res.status(500).json({ success: false, error: "Error al aprobar la acción de moderación" });
+    }
+  });
+
   app.post("/api/admin/providers/:providerId/suspend", authenticate, requireSuperAdmin, async (req, res) => {
     try {
       const parsed = providerSuspendSchema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ success: false, error: "Los datos de suspensión son inválidos", details: parsed.error.issues });
-      const { userId } = req.user;
-      const { reason, suspendedUntil } = parsed.data;
-      const provider = await updateProviderModerationStatus(req.params.providerId, userId, "SUSPENDED", reason, suspendedUntil || null);
-      res.json({ success: true, data: provider });
+      return res.status(409).json({ success: false, error: "La suspensión requiere aprobación de un segundo administrador" });
     } catch (error) {
       const msg = (error as Error).message;
       if (msg === "PROVIDER_NOT_FOUND") return res.status(404).json({ success: false, error: "Proveedor no encontrado" });
@@ -1757,9 +2122,7 @@ async function startServer() {
     try {
       const parsed = providerModerationReasonSchema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ success: false, error: "El baneo requiere una razón", details: parsed.error.issues });
-      const { userId } = req.user;
-      const provider = await updateProviderModerationStatus(req.params.providerId, userId, "BANNED", parsed.data.reason);
-      res.json({ success: true, data: provider });
+      return res.status(409).json({ success: false, error: "El baneo requiere aprobación de un segundo administrador" });
     } catch (error) {
       const msg = (error as Error).message;
       if (msg === "PROVIDER_NOT_FOUND") return res.status(404).json({ success: false, error: "Proveedor no encontrado" });
@@ -1900,6 +2263,17 @@ async function startServer() {
       const input = parsed.data;
       const { displayName, category, aboutDescription } = input;
 
+      const bannedProvider = await prisma.provider.findFirst({
+        where: { userId, status: "BANNED" },
+        select: { id: true },
+      });
+      if (bannedProvider) {
+        return res.status(403).json({
+          success: false,
+          error: "Tu cuenta tiene un perfil baneado y no puede crear otro perfil de proveedor",
+        });
+      }
+
       const baseSlug = slugifyProviderName(displayName);
       let slug = baseSlug;
       let suffix = 2;
@@ -1914,42 +2288,77 @@ async function startServer() {
       const primaryCategory = await ensureCategoryReference(mainCategory, rootCategory.id);
       const responseTimeHrs = input.responseTimeHrs || 1;
 
-      const provider = await prisma.provider.create({
-        data: {
-          userId,
-          displayName,
-          slug,
-          shortDescription: input.shortDescription || null,
-          aboutDescription,
-          logoUrl: input.logoUrl || null,
-          coverImageUrl: input.coverImageUrl || null,
-          city: legacyCity,
-          cityId: cityRef.id,
-          department: cityRef.departmentId ? cityMetadata[legacyCity].department : null,
-          serviceRadius: input.serviceRadius || null,
-          category,
-          mainCategory,
-          categoryLinks: {
-            create: [
-              { categoryId: rootCategory.id, isPrimary: false },
-              ...(primaryCategory.id !== rootCategory.id ? [{ categoryId: primaryCategory.id, isPrimary: true }] : []),
-            ],
-          },
-          priceRange: input.priceRange || null,
-          availability: normalizeAvailability(input.availability),
-          formalizationStatus: normalizeFormalizationStatus(input.formalizationStatus),
-          status: "DRAFT",
-          responseTimeHrs,
-          metrics: {
-            create: {
-              profileCompleteness: 55,
-              responseTimeHrs,
-              completedRequests: 0,
-              requestsResponded: 0,
-              trustScore: 30,
+      const provider = await prisma.$transaction(async (tx) => {
+        // Serialize concurrent profile creation for the same account. PostgreSQL
+        // row locking ensures the second request sees the lineage created by
+        // the first request before choosing its root.
+        const lockedUsers = await tx.$queryRaw<{ id: string }[]>`
+          SELECT "id" FROM "User" WHERE "id" = ${userId} FOR UPDATE
+        `;
+        if (lockedUsers.length !== 1) throw new Error("USER_NOT_FOUND");
+
+        // Multiple business profiles can belong to the same authenticated user.
+        // They share a lineage so a later confirmed ban is visible to risk review
+        // without requiring a test-only or manual database update.
+        const lineageMember = await tx.provider.findFirst({
+          where: { userId },
+          orderBy: { createdAt: "asc" },
+          select: { id: true, riskLineageRootId: true },
+        });
+        const lineageRootId = lineageMember?.riskLineageRootId ?? lineageMember?.id;
+
+        if (lineageMember && !lineageMember.riskLineageRootId) {
+          await tx.provider.update({
+            where: { id: lineageMember.id },
+            data: { riskLineageRootId: lineageMember.id },
+          });
+        }
+
+        const created = await tx.provider.create({
+          data: {
+            userId,
+            displayName,
+            slug,
+            shortDescription: input.shortDescription || null,
+            aboutDescription,
+            logoUrl: input.logoUrl || null,
+            coverImageUrl: input.coverImageUrl || null,
+            city: legacyCity,
+            cityId: cityRef.id,
+            department: cityRef.departmentId ? cityMetadata[legacyCity].department : null,
+            serviceRadius: input.serviceRadius || null,
+            category,
+            mainCategory,
+            categoryLinks: {
+              create: [
+                { categoryId: rootCategory.id, isPrimary: false },
+                ...(primaryCategory.id !== rootCategory.id ? [{ categoryId: primaryCategory.id, isPrimary: true }] : []),
+              ],
+            },
+            priceRange: input.priceRange || null,
+            availability: normalizeAvailability(input.availability),
+            formalizationStatus: normalizeFormalizationStatus(input.formalizationStatus),
+            status: "DRAFT",
+            responseTimeHrs,
+            riskLineageRootId: lineageRootId ?? undefined,
+            metrics: {
+              create: {
+                profileCompleteness: 55,
+                responseTimeHrs,
+                completedRequests: 0,
+                requestsResponded: 0,
+                trustScore: 30,
+              },
             },
           },
-        },
+        });
+
+        return lineageRootId
+          ? created
+          : tx.provider.update({
+              where: { id: created.id },
+              data: { riskLineageRootId: created.id },
+            });
       });
 
       await prisma.user.update({

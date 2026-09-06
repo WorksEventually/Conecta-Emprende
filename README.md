@@ -18,6 +18,14 @@ npm run lint
 npm run build
 ```
 
+## Sistema de riesgo
+
+Sprint 9 implementa un circuito determinista y auditable de señales agregadas, reportes administrativos, revisión humana y Trust Score. Un reporte abierto puede detener el crecimiento de reputación, pero ninguna señal aplica sanciones o penalizaciones públicas sin confirmación administrativa.
+
+- Matriz de señales: [`docs/sprint9-risk-signal-matrix.md`](docs/sprint9-risk-signal-matrix.md)
+- Guía de pruebas: [`docs/TESTING.md`](docs/TESTING.md)
+- Descripción de PR: [`docs/PR_SPRINT_9.md`](docs/PR_SPRINT_9.md)
+
 ## Configurar OAuth Google
 
 El inicio de sesión con Google requiere credenciales propias:
