@@ -1,9 +1,9 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>TradeArc · UML de actividades</title>
+<title>TradeArc Â· UML de actividades</title>
 <style>
   :root{--bg:#0f1115;--panel:#171a21;--line:#262b36;--txt:#e7eaf0;--muted:#9aa3b2;--accent:#2f9e73}
   *{box-sizing:border-box}
@@ -31,19 +31,19 @@
 </head>
 <body>
 <header>
-  <h1>TradeArc · Diagrama UML de actividades</h1>
+  <h1>TradeArc Â· Diagrama UML de actividades</h1>
   <div class="sub">
-    Flujos con calles por actor, derivados de <code>quotes-service.ts</code>, <code>reviewRules.ts</code> y <code>resolve-expired-quotes.ts</code> ·
+    Flujos con calles por actor, derivados de <code>quotes-service.ts</code>, <code>reviewRules.ts</code> y <code>resolve-expired-quotes.ts</code> Â·
     <a class="back" href="./">volver al portal</a>
   </div>
 </header>
 
 <nav>
   <button class="tab active" data-d="ciclo">Ciclo de vida de la solicitud</button>
-  <button class="tab" data-d="estados">Máquina de estados de 3 ejes</button>
-  <button class="tab" data-d="expiracion">Vencimiento automático 72 h</button>
-  <button class="tab" data-d="resena">Reseña y recálculo de confianza</button>
-  <button class="tab" data-d="onboarding">Alta y publicación de perfil</button>
+  <button class="tab" data-d="estados">MÃ¡quina de estados de 3 ejes</button>
+  <button class="tab" data-d="expiracion">Vencimiento automÃ¡tico 72 h</button>
+  <button class="tab" data-d="resena">ReseÃ±a y recÃ¡lculo de confianza</button>
+  <button class="tab" data-d="onboarding">Alta y publicaciÃ³n de perfil</button>
   <div class="tools">
     <span class="zoom"><button id="out">&minus;</button><span id="lvl">100%</span><button id="in">+</button></span>
     <button id="svg">SVG</button>
@@ -53,11 +53,11 @@
 
 <main>
   <p class="meta" id="meta"></p>
-  <div id="stage">Renderizando…</div>
+  <div id="stage">Renderizandoâ€¦</div>
   <div class="legend">
     <div>Cada <code>subgraph</code> es una calle de actor</div>
-    <div><code>◇</code> nodo de decisión</div>
-    <div><code>●</code> inicio y fin</div>
+    <div><code>â—‡</code> nodo de decisiÃ³n</div>
+    <div><code>â—</code> inicio y fin</div>
     <div>Eventos del ledger en <code>MAYUSCULAS</code></div>
   </div>
 </main>
@@ -72,7 +72,7 @@ flowchart TB
 
     INI(("Inicio")):::inicio
 
-    subgraph CLI["Calle · Cliente solicitante"]
+    subgraph CLI["Calle Â· Cliente solicitante"]
         A1["Buscar proveedor y abrir su perfil"]:::accion
         A2["Crear solicitud de cotizacion"]:::accion
         A3["Leer la cotizacion recibida"]:::accion
@@ -82,7 +82,7 @@ flowchart TB
         A7["Rechazar el cierre propuesto"]:::accion
     end
 
-    subgraph PRO["Calle · Proveedor"]
+    subgraph PRO["Calle Â· Proveedor"]
         B1["Recibir la solicitud"]:::accion
         B2["Responder con mensaje"]:::accion
         B3["Enviar o actualizar cotizacion"]:::accion
@@ -91,7 +91,7 @@ flowchart TB
         B6["Confirmar el cierre propuesto"]:::accion
     end
 
-    subgraph SIS["Calle · Sistema"]
+    subgraph SIS["Calle Â· Sistema"]
         C1["Validar que el proveedor puede recibir solicitudes"]:::accion
         C2["Emitir REQUEST_CREATED"]:::evento
         C3["Emitir PROVIDER_RESPONDED"]:::evento
@@ -194,19 +194,19 @@ flowchart TB
 
     INI(("Cada 10 minutos, node-cron")):::inicio
 
-    subgraph JOB["Calle · Job programado"]
+    subgraph JOB["Calle Â· Job programado"]
         J1["Buscar hilos en COMPLETION_PENDING con completionDeadline vencido"]:::accion
         J2["Tomar el siguiente hilo del lote"]:::accion
         J3["Escribir con bloqueo optimista por version"]:::accion
         J4["Registrar conflicto y saltar el hilo"]:::accion
     end
 
-    subgraph LAZY["Calle · Resolucion perezosa"]
+    subgraph LAZY["Calle Â· Resolucion perezosa"]
         L1["Alguien abre o intenta cerrar la solicitud"]:::accion
         L2["resolveTimeoutInline aplica la misma tabla de decision"]:::accion
     end
 
-    subgraph DEC["Calle · Reglas de desenlace"]
+    subgraph DEC["Calle Â· Reglas de desenlace"]
         D1{"Que confirmaciones existen al vencer"}:::decision
         R1["closure_outcome BILATERAL"]:::accion
         R2["closure_outcome REQUESTER_CONFIRMED_PROVIDER_NO_RESPONSE"]:::accion
@@ -214,7 +214,7 @@ flowchart TB
         R4["Estado inconsistente, cierre defensivo con aviso en log"]:::accion
     end
 
-    subgraph EF["Calle · Efectos"]
+    subgraph EF["Calle Â· Efectos"]
         E1["Emitir COMPLETION_TIMEOUT con metadata del desenlace"]:::evento
         E2["Crear evidencia BILATERAL_COMPLETION peso 1.0"]:::evento
         E3["Recalcular confianza del proveedor"]:::accion
@@ -254,13 +254,13 @@ flowchart TB
 
     INI(("La solicitud quedo cerrada")):::inicio
 
-    subgraph CLI["Calle · Cliente solicitante"]
+    subgraph CLI["Calle Â· Cliente solicitante"]
         A1["Consultar si puede resenar"]:::accion
         A2["Puntuar los 5 ejes y escribir comentario"]:::accion
         A3["Editar la resena dentro de 7 dias"]:::accion
     end
 
-    subgraph DOM["Calle · Reglas de dominio"]
+    subgraph DOM["Calle Â· Reglas de dominio"]
         D0{"Es el solicitante del hilo"}:::decision
         D1{"El hilo esta CLOSED"}:::decision
         D2{"Ya existe una resena suya"}:::decision
@@ -276,7 +276,7 @@ flowchart TB
         X5["Bloqueado, no hubo interaccion antes de cancelar"]:::bloqueo
     end
 
-    subgraph SIS["Calle · Sistema"]
+    subgraph SIS["Calle Â· Sistema"]
         S1["Guardar Review con su peso en transaccion"]:::accion
         S2["Generar ReviewAnalysis con sentimiento y senales"]:::accion
         S3["Crear ReputationEvent segun la via"]:::evento
@@ -321,7 +321,7 @@ flowchart TB
 
     INI(("Persona con cuenta creada")):::inicio
 
-    subgraph USR["Calle · Persona emprendedora"]
+    subgraph USR["Calle Â· Persona emprendedora"]
         A1["Completar datos del negocio"]:::accion
         A2["Pedir mejora de biografia con IA"]:::accion
         A3["Revisar y aprobar el texto sugerido"]:::accion
@@ -330,7 +330,7 @@ flowchart TB
         A6["Corregir lo que falta"]:::accion
     end
 
-    subgraph SIS["Calle · Sistema"]
+    subgraph SIS["Calle Â· Sistema"]
         S1["Crear Provider en estado DRAFT"]:::accion
         S2["Promover la cuenta al rol PROVIDER"]:::evento
         S3["Inicializar metricas con confianza base"]:::accion
@@ -339,7 +339,7 @@ flowchart TB
         S6["Registrar PROVIDER_PUBLISHED en bitacora"]:::evento
     end
 
-    subgraph IA["Calle · Gemini"]
+    subgraph IA["Calle Â· Gemini"]
         G1["Redactar biografia sugerida"]:::accion
     end
 
@@ -376,7 +376,7 @@ const META = {
 const stage=document.getElementById('stage'),meta=document.getElementById('meta'),lvl=document.getElementById('lvl');
 let current='ciclo',zoom=1;
 function applyZoom(){const s=stage.querySelector('svg');if(!s)return;s.style.transformOrigin='0 0';s.style.transform=`scale(${zoom})`;lvl.textContent=Math.round(zoom*100)+'%';}
-async function draw(k){current=k;meta.innerHTML=META[k]||'';const code=document.getElementById('src-'+k).textContent.trim();stage.textContent='Renderizando…';
+async function draw(k){current=k;meta.innerHTML=META[k]||'';const code=document.getElementById('src-'+k).textContent.trim();stage.textContent='Renderizandoâ€¦';
  try{const{svg}=await mermaid.render('g-'+k+'-'+Date.now(),code);stage.innerHTML=svg;zoom=1;applyZoom();}
  catch(e){stage.innerHTML='<div class="err">No se pudo renderizar.\n\n'+String(e&&e.message?e.message:e).replace(/[<>&]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]))+'\n\nMermaid se carga desde CDN, revisa la conexion.</div>';}}
 document.querySelectorAll('.tab').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));b.classList.add('active');draw(b.dataset.d);}));
@@ -386,7 +386,7 @@ function svgStr(){const s=stage.querySelector('svg');if(!s)return null;const c=s
 document.getElementById('svg').onclick=()=>{const s=svgStr();if(!s)return;const u=URL.createObjectURL(new Blob([s],{type:'image/svg+xml'}));const a=document.createElement('a');a.href=u;a.download='tradearc-actividades-'+current+'.svg';a.click();URL.revokeObjectURL(u);};
 document.getElementById('png').onclick=()=>{const el=stage.querySelector('svg'),s=svgStr();if(!s||!el)return;const b=el.getBoundingClientRect(),k=2;
  const w=Math.ceil((el.viewBox.baseVal.width||b.width/zoom)*k),h=Math.ceil((el.viewBox.baseVal.height||b.height/zoom)*k);
- const img=new Image();img.onload=()=>{const c=document.createElement('canvas');c.width=w;c.height=h;const x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,w,h);x.drawImage(img,0,0,w,h);const a=document.createElement('a');a.href=c.toDataURL('image/png');a.download='tradearc-actividades-'+current+'.png';a.click();};
+ const img=document.createElement("img");img.onload=()=>{const c=document.createElement('canvas');c.width=w;c.height=h;const x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,w,h);x.drawImage(img,0,0,w,h);const a=document.createElement('a');a.href=c.toDataURL('image/png');a.download='tradearc-actividades-'+current+'.png';a.click();};
  img.src='data:image/svg+xml;base64,'+btoa(unescape(encodeURIComponent(s)));};
 draw('ciclo');
 </script>

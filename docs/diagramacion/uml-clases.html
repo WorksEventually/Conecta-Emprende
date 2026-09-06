@@ -1,9 +1,9 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>TradeArc · UML de clases</title>
+<title>TradeArc Â· UML de clases</title>
 <style>
   :root{--bg:#0f1115;--panel:#171a21;--line:#262b36;--txt:#e7eaf0;--muted:#9aa3b2;--accent:#2f9e73}
   *{box-sizing:border-box}
@@ -31,16 +31,16 @@
 </head>
 <body>
 <header>
-  <h1>TradeArc · Diagrama UML de clases</h1>
+  <h1>TradeArc Â· Diagrama UML de clases</h1>
   <div class="sub">
-    Modelo de dominio, enumeraciones y capa de servicios derivados de <code>server.ts</code>, <code>src/lib</code> y <code>src/domain</code> ·
+    Modelo de dominio, enumeraciones y capa de servicios derivados de <code>server.ts</code>, <code>src/lib</code> y <code>src/domain</code> Â·
     <a class="back" href="./">volver al portal</a>
   </div>
 </header>
 
 <nav>
-  <button class="tab active" data-d="identidad">Dominio · Identidad y proveedor</button>
-  <button class="tab" data-d="solicitudes">Dominio · Solicitudes y reputación</button>
+  <button class="tab active" data-d="identidad">Dominio Â· Identidad y proveedor</button>
+  <button class="tab" data-d="solicitudes">Dominio Â· Solicitudes y reputaciÃ³n</button>
   <button class="tab" data-d="enums">Enumeraciones</button>
   <button class="tab" data-d="servicios">Capa de servicios</button>
   <button class="tab" data-d="capas">Arquitectura en capas</button>
@@ -53,13 +53,13 @@
 
 <main>
   <p class="meta" id="meta"></p>
-  <div id="stage">Renderizando…</div>
+  <div id="stage">Renderizandoâ€¦</div>
   <div class="legend">
-    <div><code>+</code> público</div>
+    <div><code>+</code> pÃºblico</div>
     <div><code>-</code> privado</div>
-    <div><code>*--</code> composición, el hijo no vive sin el padre</div>
-    <div><code>o--</code> agregación</div>
-    <div><code>--&gt;</code> asociación</div>
+    <div><code>*--</code> composiciÃ³n, el hijo no vive sin el padre</div>
+    <div><code>o--</code> agregaciÃ³n</div>
+    <div><code>--&gt;</code> asociaciÃ³n</div>
     <div><code>..&gt;</code> dependencia</div>
     <div><code>&lt;&lt;service&gt;&gt;</code> servicio sin estado</div>
   </div>
@@ -723,7 +723,7 @@ const META = {
 const stage=document.getElementById('stage'),meta=document.getElementById('meta'),lvl=document.getElementById('lvl');
 let current='identidad',zoom=1;
 function applyZoom(){const s=stage.querySelector('svg');if(!s)return;s.style.transformOrigin='0 0';s.style.transform=`scale(${zoom})`;lvl.textContent=Math.round(zoom*100)+'%';}
-async function draw(k){current=k;meta.innerHTML=META[k]||'';const code=document.getElementById('src-'+k).textContent.trim();stage.textContent='Renderizando…';
+async function draw(k){current=k;meta.innerHTML=META[k]||'';const code=document.getElementById('src-'+k).textContent.trim();stage.textContent='Renderizandoâ€¦';
  try{const{svg}=await mermaid.render('g-'+k+'-'+Date.now(),code);stage.innerHTML=svg;zoom=1;applyZoom();}
  catch(e){stage.innerHTML='<div class="err">No se pudo renderizar.\n\n'+String(e&&e.message?e.message:e).replace(/[<>&]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]))+'\n\nMermaid se carga desde CDN, revisa la conexion.</div>';}}
 document.querySelectorAll('.tab').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));b.classList.add('active');draw(b.dataset.d);}));
@@ -733,7 +733,7 @@ function svgStr(){const s=stage.querySelector('svg');if(!s)return null;const c=s
 document.getElementById('svg').onclick=()=>{const s=svgStr();if(!s)return;const u=URL.createObjectURL(new Blob([s],{type:'image/svg+xml'}));const a=document.createElement('a');a.href=u;a.download='tradearc-clases-'+current+'.svg';a.click();URL.revokeObjectURL(u);};
 document.getElementById('png').onclick=()=>{const el=stage.querySelector('svg'),s=svgStr();if(!s||!el)return;const b=el.getBoundingClientRect(),k=2;
  const w=Math.ceil((el.viewBox.baseVal.width||b.width/zoom)*k),h=Math.ceil((el.viewBox.baseVal.height||b.height/zoom)*k);
- const img=new Image();img.onload=()=>{const c=document.createElement('canvas');c.width=w;c.height=h;const x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,w,h);x.drawImage(img,0,0,w,h);const a=document.createElement('a');a.href=c.toDataURL('image/png');a.download='tradearc-clases-'+current+'.png';a.click();};
+ const img=document.createElement("img");img.onload=()=>{const c=document.createElement('canvas');c.width=w;c.height=h;const x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,w,h);x.drawImage(img,0,0,w,h);const a=document.createElement('a');a.href=c.toDataURL('image/png');a.download='tradearc-clases-'+current+'.png';a.click();};
  img.src='data:image/svg+xml;base64,'+btoa(unescape(encodeURIComponent(s)));};
 draw('identidad');
 </script>

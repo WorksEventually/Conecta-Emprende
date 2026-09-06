@@ -1,9 +1,9 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>TradeArc · UML de casos de uso</title>
+<title>TradeArc Â· UML de casos de uso</title>
 <style>
   :root{--bg:#0f1115;--panel:#171a21;--line:#262b36;--txt:#e7eaf0;--muted:#9aa3b2;--accent:#2f9e73}
   *{box-sizing:border-box}
@@ -31,19 +31,19 @@
 </head>
 <body>
 <header>
-  <h1>TradeArc · Diagrama UML de casos de uso</h1>
+  <h1>TradeArc Â· Diagrama UML de casos de uso</h1>
   <div class="sub">
-    63 casos de uso derivados de los 52 endpoints de <code>server.ts</code> y sus guards de rol ·
+    63 casos de uso derivados de los 52 endpoints de <code>server.ts</code> y sus guards de rol Â·
     <a class="back" href="./">volver al portal</a>
   </div>
 </header>
 
 <nav>
-  <button class="tab active" data-d="actores">Jerarquía de actores</button>
+  <button class="tab active" data-d="actores">JerarquÃ­a de actores</button>
   <button class="tab" data-d="general">Vista general por paquetes</button>
-  <button class="tab" data-d="acceso">1-3 · Acceso, descubrimiento y perfil</button>
-  <button class="tab" data-d="solicitudes">4-5 · Solicitudes y reputación</button>
-  <button class="tab" data-d="admin">6-7 · Moderación y sistema</button>
+  <button class="tab" data-d="acceso">1-3 Â· Acceso, descubrimiento y perfil</button>
+  <button class="tab" data-d="solicitudes">4-5 Â· Solicitudes y reputaciÃ³n</button>
+  <button class="tab" data-d="admin">6-7 Â· ModeraciÃ³n y sistema</button>
   <div class="tools">
     <span class="zoom"><button id="out">&minus;</button><span id="lvl">100%</span><button id="in">+</button></span>
     <button id="svg">SVG</button>
@@ -53,12 +53,12 @@
 
 <main>
   <p class="meta" id="meta"></p>
-  <div id="stage">Renderizando…</div>
+  <div id="stage">Renderizandoâ€¦</div>
   <div class="legend">
-    <div><code>«include»</code> comportamiento obligatorio invocado por el caso base</div>
-    <div><code>«extend»</code> comportamiento opcional</div>
-    <div><code>▷</code> generalización de actor, hereda permisos</div>
-    <div>Actor humano en azul · actor sistema en ámbar · caso de uso en verde</div>
+    <div><code>Â«includeÂ»</code> comportamiento obligatorio invocado por el caso base</div>
+    <div><code>Â«extendÂ»</code> comportamiento opcional</div>
+    <div><code>â–·</code> generalizaciÃ³n de actor, hereda permisos</div>
+    <div>Actor humano en azul Â· actor sistema en Ã¡mbar Â· caso de uso en verde</div>
   </div>
 </main>
 
@@ -126,11 +126,11 @@ flowchart LR
     AD --- PK6
     SA --- PK6
     SYS --- PK7
-    PK1 -.->|"«include»"| GO
-    PK2 -.->|"«include»"| IA
-    PK3 -.->|"«extend»"| IA
-    PK4 -.->|"«extend»"| IA
-    PK5 -.->|"«include»"| PK7
+    PK1 -.->|"Â«includeÂ»"| GO
+    PK2 -.->|"Â«includeÂ»"| IA
+    PK3 -.->|"Â«extendÂ»"| IA
+    PK4 -.->|"Â«extendÂ»"| IA
+    PK5 -.->|"Â«includeÂ»"| PK7
 </script>
 
 <script type="text/plain" id="src-acceso">
@@ -145,7 +145,7 @@ flowchart LR
     GO(["Google OAuth"]):::sys
     IA(["Gemini IA"]):::sys
 
-    subgraph PK1["Paquete 1 · Acceso e identidad"]
+    subgraph PK1["Paquete 1 Â· Acceso e identidad"]
         UC01("UC-01 Registrarse"):::uc
         UC02("UC-02 Iniciar sesion con correo"):::uc
         UC03("UC-03 Iniciar sesion con Google"):::uc
@@ -154,7 +154,7 @@ flowchart LR
         UC06("UC-06 Consultar sesion actual"):::uc
     end
 
-    subgraph PK2["Paquete 2 · Descubrimiento"]
+    subgraph PK2["Paquete 2 Â· Descubrimiento"]
         UC07("UC-07 Buscar proveedores con filtros"):::uc
         UC08("UC-08 Buscar en lenguaje natural"):::uc
         UC09("UC-09 Interpretar intencion del texto"):::uc
@@ -165,7 +165,7 @@ flowchart LR
         UC14("UC-14 Ver item del catalogo"):::uc
     end
 
-    subgraph PK3["Paquete 3 · Perfil y catalogo"]
+    subgraph PK3["Paquete 3 Â· Perfil y catalogo"]
         UC15("UC-15 Crear perfil de negocio"):::uc
         UC16("UC-16 Promover cuenta a PROVIDER"):::uc
         UC17("UC-17 Redactar biografia con IA"):::uc
@@ -197,14 +197,14 @@ flowchart LR
     P --- UC22
     P --- UC23
 
-    UC03 -.->|"«include»"| GO
-    UC08 -.->|"«include»"| UC09
-    UC08 -.->|"«include»"| UC10
-    UC09 -.->|"«include»"| IA
-    UC10 -.->|"«include»"| IA
-    UC15 -.->|"«include»"| UC16
-    UC17 -.->|"«include»"| IA
-    UC19 -.->|"«include»"| UC20
+    UC03 -.->|"Â«includeÂ»"| GO
+    UC08 -.->|"Â«includeÂ»"| UC09
+    UC08 -.->|"Â«includeÂ»"| UC10
+    UC09 -.->|"Â«includeÂ»"| IA
+    UC10 -.->|"Â«includeÂ»"| IA
+    UC15 -.->|"Â«includeÂ»"| UC16
+    UC17 -.->|"Â«includeÂ»"| IA
+    UC19 -.->|"Â«includeÂ»"| UC20
 </script>
 
 <script type="text/plain" id="src-solicitudes">
@@ -219,7 +219,7 @@ flowchart LR
     IA(["Gemini IA"]):::sys
     SYS(["Sistema programado"]):::sys
 
-    subgraph PK4["Paquete 4 · Solicitudes y cotizacion"]
+    subgraph PK4["Paquete 4 Â· Solicitudes y cotizacion"]
         UC24("UC-24 Crear solicitud de cotizacion"):::uc
         UC25("UC-25 Validar que el proveedor puede recibir"):::uc
         UC26("UC-26 Redactar solicitud con IA"):::uc
@@ -236,7 +236,7 @@ flowchart LR
         UC37("UC-37 Retirar la solicitud de cierre"):::uc
     end
 
-    subgraph PK5["Paquete 5 · Reputacion y confianza"]
+    subgraph PK5["Paquete 5 Â· Reputacion y confianza"]
         UC38("UC-38 Consultar elegibilidad de resena"):::uc
         UC39("UC-39 Publicar resena verificada"):::uc
         UC40("UC-40 Validar elegibilidad y peso"):::uc
@@ -268,16 +268,16 @@ flowchart LR
     P --- UC45
     AD --- UC45
 
-    UC24 -.->|"«include»"| UC25
-    UC24 -.->|"«extend»"| UC26
-    UC26 -.->|"«include»"| IA
-    UC33 -.->|"«include»"| UC34
-    UC34 -.->|"«include»"| UC35
-    UC39 -.->|"«include»"| UC40
-    UC39 -.->|"«include»"| UC41
-    UC39 -.->|"«include»"| UC35
-    UC42 -.->|"«include»"| UC43
-    UC42 -.->|"«include»"| UC41
+    UC24 -.->|"Â«includeÂ»"| UC25
+    UC24 -.->|"Â«extendÂ»"| UC26
+    UC26 -.->|"Â«includeÂ»"| IA
+    UC33 -.->|"Â«includeÂ»"| UC34
+    UC34 -.->|"Â«includeÂ»"| UC35
+    UC39 -.->|"Â«includeÂ»"| UC40
+    UC39 -.->|"Â«includeÂ»"| UC41
+    UC39 -.->|"Â«includeÂ»"| UC35
+    UC42 -.->|"Â«includeÂ»"| UC43
+    UC42 -.->|"Â«includeÂ»"| UC41
     SYS --- UC34
 </script>
 
@@ -293,7 +293,7 @@ flowchart LR
     SA(["Super admin"]):::actor
     SYS(["Sistema programado, cada 10 min"]):::sys
 
-    subgraph PK6["Paquete 6 · Moderacion y administracion"]
+    subgraph PK6["Paquete 6 Â· Moderacion y administracion"]
         UC46("UC-46 Listar reportes de riesgo"):::uc
         UC47("UC-47 Ver detalle de reporte"):::uc
         UC48("UC-48 Cambiar estado del reporte"):::uc
@@ -310,7 +310,7 @@ flowchart LR
         UC59("UC-59 Registrar accion en bitacora"):::uc
     end
 
-    subgraph PK7["Paquete 7 · Procesos automaticos"]
+    subgraph PK7["Paquete 7 Â· Procesos automaticos"]
         UC60("UC-60 Resolver solicitudes expiradas"):::uc
         UC61("UC-61 Cerrar por vencimiento de 72 horas"):::uc
         UC62("UC-62 Analizar riesgo del proveedor"):::uc
@@ -335,17 +335,17 @@ flowchart LR
     SYS --- UC60
     SYS --- UC63
 
-    UC48 -.->|"«include»"| UC59
-    UC49 -.->|"«include»"| UC59
-    UC50 -.->|"«include»"| UC59
-    UC51 -.->|"«include»"| UC59
-    UC52 -.->|"«include»"| UC59
-    UC53 -.->|"«include»"| UC59
-    UC54 -.->|"«include»"| UC59
-    UC57 -.->|"«include»"| UC59
-    UC58 -.->|"«include»"| UC60
-    UC60 -.->|"«include»"| UC61
-    UC61 -.->|"«extend»"| UC62
+    UC48 -.->|"Â«includeÂ»"| UC59
+    UC49 -.->|"Â«includeÂ»"| UC59
+    UC50 -.->|"Â«includeÂ»"| UC59
+    UC51 -.->|"Â«includeÂ»"| UC59
+    UC52 -.->|"Â«includeÂ»"| UC59
+    UC53 -.->|"Â«includeÂ»"| UC59
+    UC54 -.->|"Â«includeÂ»"| UC59
+    UC57 -.->|"Â«includeÂ»"| UC59
+    UC58 -.->|"Â«includeÂ»"| UC60
+    UC60 -.->|"Â«includeÂ»"| UC61
+    UC61 -.->|"Â«extendÂ»"| UC62
 </script>
 
 <script type="module">
@@ -363,7 +363,7 @@ const META = {
 const stage=document.getElementById('stage'),meta=document.getElementById('meta'),lvl=document.getElementById('lvl');
 let current='actores',zoom=1;
 function applyZoom(){const s=stage.querySelector('svg');if(!s)return;s.style.transformOrigin='0 0';s.style.transform=`scale(${zoom})`;lvl.textContent=Math.round(zoom*100)+'%';}
-async function draw(k){current=k;meta.innerHTML=META[k]||'';const code=document.getElementById('src-'+k).textContent.trim();stage.textContent='Renderizando…';
+async function draw(k){current=k;meta.innerHTML=META[k]||'';const code=document.getElementById('src-'+k).textContent.trim();stage.textContent='Renderizandoâ€¦';
  try{const{svg}=await mermaid.render('g-'+k+'-'+Date.now(),code);stage.innerHTML=svg;zoom=1;applyZoom();}
  catch(e){stage.innerHTML='<div class="err">No se pudo renderizar.\n\n'+String(e&&e.message?e.message:e).replace(/[<>&]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]))+'\n\nMermaid se carga desde CDN, revisa la conexion.</div>';}}
 document.querySelectorAll('.tab').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));b.classList.add('active');draw(b.dataset.d);}));
@@ -373,7 +373,7 @@ function svgStr(){const s=stage.querySelector('svg');if(!s)return null;const c=s
 document.getElementById('svg').onclick=()=>{const s=svgStr();if(!s)return;const u=URL.createObjectURL(new Blob([s],{type:'image/svg+xml'}));const a=document.createElement('a');a.href=u;a.download='tradearc-casos-de-uso-'+current+'.svg';a.click();URL.revokeObjectURL(u);};
 document.getElementById('png').onclick=()=>{const el=stage.querySelector('svg'),s=svgStr();if(!s||!el)return;const b=el.getBoundingClientRect(),k=2;
  const w=Math.ceil((el.viewBox.baseVal.width||b.width/zoom)*k),h=Math.ceil((el.viewBox.baseVal.height||b.height/zoom)*k);
- const img=new Image();img.onload=()=>{const c=document.createElement('canvas');c.width=w;c.height=h;const x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,w,h);x.drawImage(img,0,0,w,h);const a=document.createElement('a');a.href=c.toDataURL('image/png');a.download='tradearc-casos-de-uso-'+current+'.png';a.click();};
+ const img=document.createElement("img");img.onload=()=>{const c=document.createElement('canvas');c.width=w;c.height=h;const x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,w,h);x.drawImage(img,0,0,w,h);const a=document.createElement('a');a.href=c.toDataURL('image/png');a.download='tradearc-casos-de-uso-'+current+'.png';a.click();};
  img.src='data:image/svg+xml;base64,'+btoa(unescape(encodeURIComponent(s)));};
 draw('actores');
 </script>

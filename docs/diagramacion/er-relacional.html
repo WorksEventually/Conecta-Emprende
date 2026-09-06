@@ -1,9 +1,9 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>TradeArc · Diagrama relacional de la base de datos (3FN)</title>
+<title>TradeArc Â· Diagrama relacional de la base de datos (3FN)</title>
 <style>
   :root{
     --bg:#0f1115; --panel:#171a21; --line:#262b36; --txt:#e7eaf0;
@@ -42,21 +42,21 @@
 <body>
 
 <header>
-  <h1>TradeArc · Diagrama relacional de la base de datos</h1>
+  <h1>TradeArc Â· Diagrama relacional de la base de datos</h1>
   <div class="sub">
-    Modelo normalizado en 3FN · PostgreSQL 15 · 40 tablas, 10 enums ·
+    Modelo normalizado en 3FN Â· PostgreSQL 15 Â· 40 tablas, 10 enums Â·
     derivado de <code>prisma/schema.prisma</code>
   </div>
 </header>
 
 <nav>
   <button class="tab active" data-d="global">Vista global</button>
-  <button class="tab" data-d="a">A · Identidad y acceso</button>
-  <button class="tab" data-d="b">B · Ubicación y categorías</button>
-  <button class="tab" data-d="c">C · Proveedor</button>
-  <button class="tab" data-d="d">D · Catálogo</button>
-  <button class="tab" data-d="e">E · Solicitudes y eventos</button>
-  <button class="tab" data-d="f">F · Confianza y moderación</button>
+  <button class="tab" data-d="a">A Â· Identidad y acceso</button>
+  <button class="tab" data-d="b">B Â· UbicaciÃ³n y categorÃ­as</button>
+  <button class="tab" data-d="c">C Â· Proveedor</button>
+  <button class="tab" data-d="d">D Â· CatÃ¡logo</button>
+  <button class="tab" data-d="e">E Â· Solicitudes y eventos</button>
+  <button class="tab" data-d="f">F Â· Confianza y moderaciÃ³n</button>
   <div class="tools">
     <span class="zoom">
       <button id="out" title="Reducir">&minus;</button>
@@ -70,15 +70,15 @@
 
 <main>
   <p class="meta" id="meta"></p>
-  <div id="stage">Renderizando…</div>
+  <div id="stage">Renderizandoâ€¦</div>
   <div class="legend">
     <div><code>PK</code> clave primaria</div>
-    <div><code>FK</code> clave foránea</div>
-    <div><code>UK</code> restricción única</div>
+    <div><code>FK</code> clave forÃ¡nea</div>
+    <div><code>UK</code> restricciÃ³n Ãºnica</div>
     <div><code>||--o{</code> uno a muchos</div>
     <div><code>|o--o{</code> cero-o-uno a muchos</div>
     <div><code>||--o|</code> uno a cero-o-uno (1:1 opcional)</div>
-    <div><code>LEGACY</code> columna de transición, ver doc 06</div>
+    <div><code>LEGACY</code> columna de transiciÃ³n, ver doc 06</div>
     <div><code>DERIVADO</code> valor calculado o cacheado</div>
   </div>
 </main>
@@ -93,7 +93,7 @@ erDiagram
     User ||--o{ RefreshToken : "rota"
     User ||--o{ EmailVerificationToken : "verifica con"
     User ||--o{ PasswordResetToken : "restablece con"
-    User ||--o{ Provider : "es dueño de"
+    User ||--o{ Provider : "es dueÃ±o de"
     User ||--o{ QuoteThread : "solicita como cliente"
     User ||--o{ Review : "redacta"
     User |o--o{ ModerationAuditLog : "actua en"
@@ -124,12 +124,12 @@ erDiagram
     Provider ||--o{ ProviderMedal : "gana"
     Provider ||--o{ CatalogItem : "publica"
     Provider ||--o{ QuoteThread : "recibe"
-    Provider ||--o{ Review : "es reseñado en"
+    Provider ||--o{ Review : "es reseÃ±ado en"
     Provider ||--o{ TrustScoreSnapshot : "historiza"
     Provider ||--o{ RiskReport : "es analizado en"
     Provider ||--o{ ReputationEvent : "acumula evidencia"
     Provider ||--o{ ProviderPrivateFeedback : "recibe privado"
-    Provider ||--o{ RiskSignalEvidence : "acumula señales"
+    Provider ||--o{ RiskSignalEvidence : "acumula seÃ±ales"
     RiskReport |o--o{ RiskSignalEvidence : "respalda"
     RiskReport |o--o{ ModerationActionApproval : "motiva"
 
@@ -526,7 +526,7 @@ erDiagram
 
     Provider {
         cuid id PK
-        cuid userId FK "cascade, dueño"
+        cuid userId FK "cascade, dueÃ±o"
         string displayName
         string slug UK "unico, URL publica"
         text bio "opcional"
@@ -818,8 +818,8 @@ erDiagram
 <script type="text/plain" id="src-f">
 erDiagram
     QuoteThread ||--o{ Review : "habilita, cascade"
-    Provider ||--o{ Review : "es reseñado, restrict"
-    User ||--o{ Review : "reseña como cliente, restrict"
+    Provider ||--o{ Review : "es reseÃ±ado, restrict"
+    User ||--o{ Review : "reseÃ±a como cliente, restrict"
     Review ||--o| ReviewAnalysis : "uno a uno analisis"
     Review ||--o{ ReviewHistory : "versiona, cascade"
     Provider ||--o{ ReputationEvent : "acumula, cascade"
@@ -830,7 +830,7 @@ erDiagram
     Provider ||--o{ RiskReport : "es analizado, cascade"
     User |o--o{ RiskReport : "revisa, escala o resuelve"
     User |o--o{ ModerationAuditLog : "actua, set null"
-    Provider ||--o{ RiskSignalEvidence : "acumula señales, cascade"
+    Provider ||--o{ RiskSignalEvidence : "acumula seÃ±ales, cascade"
     RiskReport |o--o{ RiskSignalEvidence : "respalda, set null"
     RiskReport |o--o{ ModerationActionApproval : "motiva, set null"
     User ||--o{ ModerationActionApproval : "solicita, cascade"
@@ -838,7 +838,7 @@ erDiagram
 
     Review {
         cuid id PK
-        cuid providerId FK "restrict, reseñado"
+        cuid providerId FK "restrict, reseÃ±ado"
         cuid reviewerId FK "restrict, autor"
         cuid requestId FK "cascade, solicitud que la respalda"
         int qualityScore "eje 1 de 5"
@@ -934,7 +934,7 @@ erDiagram
         cuid actorUserId FK "set null, nulo si actua el sistema"
         string action "PROVIDER_SUSPENDED, REPORT_ESCALATED y mas"
         string targetType "tipo de entidad afectada"
-        string targetId "id polimorfico, SIN FK por diseño"
+        string targetId "id polimorfico, SIN FK por diseÃ±o"
         text reason "obligatorio"
         json metadata "opcional"
         datetime createdAt
@@ -943,7 +943,7 @@ erDiagram
         cuid id PK
         cuid providerId FK "cascade"
         cuid riskReportId FK "set null, reporte que la agrupa"
-        string signalKey "identificador determinista de la señal"
+        string signalKey "identificador determinista de la seÃ±al"
         float observedValue "opcional, valor medido"
         float threshold "opcional, umbral normativo"
         float contribution "aporte al riesgo total"
@@ -989,13 +989,13 @@ mermaid.initialize({
 });
 
 const META = {
-  global: 'Vista global: las 40 tablas con sus claves primarias y foráneas. Dos agregados raíz (<b>User</b> y <b>Provider</b>) más un agregado transaccional (<b>QuoteThread</b>). <b>Review</b> es la única entidad que depende de los tres a la vez, y esa triple dependencia es la que hace verificable cada reseña.',
-  a: 'Módulo A: identidad, sesiones y tokens. El rol vive en dos lugares por diseño: <b>User.role</b> es el rol primario y <b>RoleAssignment</b> permite roles múltiples. El backend une ambos en <b>getUserSystemRoles</b>.',
-  b: 'Módulo B: datos de referencia. <b>Department a City</b> elimina la dependencia transitiva ciudad-departamento. <b>Category</b> es auto-referenciada para jerarquía de profundidad arbitraria. Las dos tablas puente resuelven M:N con clave compuesta, y <b>isPrimary</b> es un atributo que pertenece a la relación, no a las entidades.',
-  c: 'Módulo C: perfil del proveedor. <b>User 1 a N Provider</b> es intencional, una persona puede tener varios negocios. <b>ProviderMetrics</b> es un read model que separa <b>trustScore</b> interno de <b>publicTrustScore</b>: el score interno nunca sale de la base.',
-  d: 'Módulo D: catálogo. <b>EquipmentDetail</b> es especialización 1:1 opcional (class table inheritance) para atributos que solo aplican a equipo productivo, en lugar de dejar columnas nulas en la mayoría de las filas.',
-  e: 'Módulo E: el núcleo transaccional con el modelo de 3 ejes (<b>workflow_phase</b>, <b>closure_outcome</b>, <b>moderation_state</b>). <b>RequestEvent</b> es un ledger append-only con idempotencia por sha256 en restricción UNIQUE: un reintento de red no puede duplicar un evento.',
-  f: 'Módulo F: confianza y moderación. <b>Review</b> tiene UNIQUE (requestId, providerId, reviewerId): no existe reseña sin solicitud verificable. <b>ReputationEvent</b> tiene UNIQUE (requestId, evidenceType): la evidencia no se puede duplicar ni con el cron y la ruta HTTP corriendo a la vez.'
+  global: 'Vista global: las 40 tablas con sus claves primarias y forÃ¡neas. Dos agregados raÃ­z (<b>User</b> y <b>Provider</b>) mÃ¡s un agregado transaccional (<b>QuoteThread</b>). <b>Review</b> es la Ãºnica entidad que depende de los tres a la vez, y esa triple dependencia es la que hace verificable cada reseÃ±a.',
+  a: 'MÃ³dulo A: identidad, sesiones y tokens. El rol vive en dos lugares por diseÃ±o: <b>User.role</b> es el rol primario y <b>RoleAssignment</b> permite roles mÃºltiples. El backend une ambos en <b>getUserSystemRoles</b>.',
+  b: 'MÃ³dulo B: datos de referencia. <b>Department a City</b> elimina la dependencia transitiva ciudad-departamento. <b>Category</b> es auto-referenciada para jerarquÃ­a de profundidad arbitraria. Las dos tablas puente resuelven M:N con clave compuesta, y <b>isPrimary</b> es un atributo que pertenece a la relaciÃ³n, no a las entidades.',
+  c: 'MÃ³dulo C: perfil del proveedor. <b>User 1 a N Provider</b> es intencional, una persona puede tener varios negocios. <b>ProviderMetrics</b> es un read model que separa <b>trustScore</b> interno de <b>publicTrustScore</b>: el score interno nunca sale de la base.',
+  d: 'MÃ³dulo D: catÃ¡logo. <b>EquipmentDetail</b> es especializaciÃ³n 1:1 opcional (class table inheritance) para atributos que solo aplican a equipo productivo, en lugar de dejar columnas nulas en la mayorÃ­a de las filas.',
+  e: 'MÃ³dulo E: el nÃºcleo transaccional con el modelo de 3 ejes (<b>workflow_phase</b>, <b>closure_outcome</b>, <b>moderation_state</b>). <b>RequestEvent</b> es un ledger append-only con idempotencia por sha256 en restricciÃ³n UNIQUE: un reintento de red no puede duplicar un evento.',
+  f: 'MÃ³dulo F: confianza y moderaciÃ³n. <b>Review</b> tiene UNIQUE (requestId, providerId, reviewerId): no existe reseÃ±a sin solicitud verificable. <b>ReputationEvent</b> tiene UNIQUE (requestId, evidenceType): la evidencia no se puede duplicar ni con el cron y la ruta HTTP corriendo a la vez.'
 };
 
 const stage = document.getElementById('stage');
@@ -1016,7 +1016,7 @@ async function draw(key){
   current = key;
   meta.innerHTML = META[key] || '';
   const code = document.getElementById('src-' + key).textContent.trim();
-  stage.textContent = 'Renderizando…';
+  stage.textContent = 'Renderizandoâ€¦';
   try {
     const { svg } = await mermaid.render('g-' + key + '-' + Date.now(), code);
     stage.innerHTML = svg;
@@ -1026,7 +1026,7 @@ async function draw(key){
     stage.innerHTML = '<div class="err">No se pudo renderizar el diagrama.\n\n' +
       String(e && e.message ? e.message : e).replace(/[<>&]/g, c =>
         ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c])) +
-      '\n\nSi el visor quedó en blanco, revisá la conexión: Mermaid se carga desde CDN.</div>';
+      '\n\nSi el visor quedÃ³ en blanco, revisÃ¡ la conexiÃ³n: Mermaid se carga desde CDN.</div>';
   }
 }
 
@@ -1069,7 +1069,7 @@ document.getElementById('png').onclick = () => {
   const scale = 2;
   const w = Math.ceil((svgEl.viewBox.baseVal.width  || box.width  / zoom) * scale);
   const h = Math.ceil((svgEl.viewBox.baseVal.height || box.height / zoom) * scale);
-  const img = new Image();
+  const img = document.createElement("img");
   img.onload = () => {
     const c = document.createElement('canvas');
     c.width = w; c.height = h;
