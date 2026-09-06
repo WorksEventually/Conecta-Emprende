@@ -192,9 +192,9 @@ export default function AdminReportsPage() {
                 </p>
                 <div className="business-metrics">
                   <div><strong>{Math.round(selected.riskScore)}</strong><span>Riesgo</span></div>
-                  <div><strong>{selected.suspiciousCyclesCount}</strong><span>Ciclos sospechosos</span></div>
-                  <div><strong>{selected.avgMessagesPerRequest ?? "N/D"}</strong><span>Mensajes por solicitud</span></div>
-                  <div><strong>{selected.newAccountsPercentage ?? "N/D"}</strong><span>Cuentas nuevas</span></div>
+                   <div><strong>{selected.signals.suspiciousCyclesCount}</strong><span>Ciclos sospechosos</span></div>
+                   <div><strong>{selected.signals.avgMessagesPerRequest ?? "N/D"}</strong><span>Mensajes por solicitud</span></div>
+                   <div><strong>{selected.signals.newAccountsPercentage ?? "N/D"}</strong><span>Cuentas nuevas</span></div>
                 </div>
                 <p>{selected.recommendedAction || "Revisión manual recomendada."}</p>
                 {selected.reviewerNotes && <p className="reviewer-note"><strong>Notas previas:</strong> {selected.reviewerNotes}</p>}

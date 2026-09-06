@@ -22,12 +22,17 @@ export interface AdminRiskReport {
     category: string;
   };
   riskScore: number;
-  suspiciousCyclesCount: number;
-  avgSearchTimeSeconds: number | null;
-  avgRequestToCompletionMinutes: number | null;
-  avgMessagesPerRequest: number | null;
-  newAccountsPercentage: number | null;
-  ratingConcentrationScore: number | null;
+  riskLevel: "normal" | "unusual" | "suspicious" | "high-risk";
+  penalty: number;
+  algorithmVersion: string;
+  signals: {
+    suspiciousCyclesCount: number;
+    avgSearchTimeSeconds: number | null;
+    avgRequestToCompletionMinutes: number | null;
+    avgMessagesPerRequest: number | null;
+    newAccountsPercentage: number | null;
+    ratingConcentrationScore: number | null;
+  };
   status: AdminRiskReportStatus;
   reviewerNotes: string | null;
   recommendedAction: string | null;

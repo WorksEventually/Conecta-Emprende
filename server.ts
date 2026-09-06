@@ -1563,6 +1563,36 @@ async function startServer() {
     resolvedBy: { select: { id: true, name: true, email: true } },
   } as const;
 
+  function toRiskReportDto(report: any) {
+    return {
+      id: report.id,
+      providerId: report.providerId,
+      provider: report.provider,
+      riskScore: report.riskScore,
+      riskLevel: report.riskLevel,
+      penalty: report.penalty,
+      algorithmVersion: report.algorithmVersion,
+      signals: {
+        suspiciousCyclesCount: report.suspiciousCyclesCount,
+        avgSearchTimeSeconds: report.avgSearchTimeSeconds,
+        avgRequestToCompletionMinutes: report.avgRequestToCompletionMinutes,
+        avgMessagesPerRequest: report.avgMessagesPerRequest,
+        newAccountsPercentage: report.newAccountsPercentage,
+        ratingConcentrationScore: report.ratingConcentrationScore,
+      },
+      status: report.status,
+      reviewerNotes: report.reviewerNotes,
+      recommendedAction: report.recommendedAction,
+      generatedAt: report.generatedAt,
+      reviewedAt: report.reviewedAt,
+      escalatedAt: report.escalatedAt,
+      resolvedAt: report.resolvedAt,
+      reviewedBy: report.reviewedBy,
+      escalatedBy: report.escalatedBy,
+      resolvedBy: report.resolvedBy,
+    };
+  }
+
   app.get("/api/admin/risk-reports", authenticate, requireAdminReviewerOrSuperAdmin, async (req, res) => {
     try {
       const parsed = riskReportQuerySchema.safeParse(req.query);
@@ -1573,7 +1603,7 @@ async function startServer() {
         include: riskReportInclude,
         orderBy: [{ status: "asc" }, { generatedAt: "desc" }],
       });
-      res.json({ success: true, data: reports });
+       res.json({ success: true, data: reports.map(toRiskReportDto) });
     } catch (error) {
       console.error("Admin reports error:", error);
       res.status(500).json({ success: false, error: "Error al obtener reportes" });
@@ -1587,7 +1617,7 @@ async function startServer() {
         include: riskReportInclude,
       });
       if (!report) return res.status(404).json({ success: false, error: "Reporte no encontrado" });
-      res.json({ success: true, data: report });
+       res.json({ success: true, data: toRiskReportDto(report) });
     } catch (error) {
       console.error("Admin report detail error:", error);
       res.status(500).json({ success: false, error: "Error al obtener el reporte" });
@@ -1672,7 +1702,7 @@ async function startServer() {
         await recalculateProviderTrustScore(currentReport.providerId);
       }
 
-      res.json({ success: true, data: report });
+      res.json({ success: true, data: toRiskReportDto(report) });
     } catch (error) {
       console.error("Update risk report status error:", error);
       res.status(500).json({ success: false, error: "Error al actualizar el reporte" });
@@ -1709,7 +1739,7 @@ async function startServer() {
         metadata: { providerId: report.providerId, status: "ESCALATED" },
       });
 
-      res.json({ success: true, data: report });
+      res.json({ success: true, data: toRiskReportDto(report) });
     } catch (error) {
       console.error("Escalate risk report error:", error);
       res.status(500).json({ success: false, error: "Error al escalar el reporte" });
