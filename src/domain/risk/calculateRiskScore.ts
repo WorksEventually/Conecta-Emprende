@@ -33,14 +33,14 @@ export type RiskSignalKey =
   | "REVIEW_BURST"
   | "ACCOUNT_CLUSTER"
   | "PROFILE_RECREATION"
-  | "ACTION_VOLUME"
-  | "INTERVAL_REGULARITY";
+  | "ACTION_VOLUME";
 
 export type RiskSignal = {
   key: RiskSignalKey;
   observedValue: number | null;
   threshold: number;
   contribution: number;
+  sourceEventIds?: string[];
 };
 
 export type RiskScoreResult = {
@@ -51,6 +51,27 @@ export type RiskScoreResult = {
   recommendedAction:string;
   shouldGenerateReport:boolean;
 };
+
+export const RISK_ALGORITHM_VERSION = "risk-v1.0.0";
+
+export const RISK_SIGNAL_CATALOG: ReadonlyArray<{
+  key: RiskSignalKey;
+  source: string;
+  window: string;
+  confirmationRequired: boolean;
+}> = [
+  { key: "FAST_SEARCH", source: "SearchEvent (no disponible en MVP)", window: "Por interacción", confirmationRequired: true },
+  { key: "FAST_COMPLETION", source: "QuoteThread + RequestEvent COMPLETION_CONFIRMED", window: "Últimos 30 días", confirmationRequired: true },
+  { key: "LOW_MESSAGE_COUNT", source: "QuoteMessage + RequestEvent MESSAGE_SENT", window: "Por solicitud", confirmationRequired: true },
+  { key: "NEW_ACCOUNT_CONCENTRATION", source: "User.createdAt + QuoteThread", window: "Últimos 30 días", confirmationRequired: true },
+  { key: "REPEATED_PROVIDER_TARGET", source: "QuoteThread.senderId", window: "Últimos 30 días", confirmationRequired: true },
+  { key: "RATING_CONCENTRATION", source: "Review + User.createdAt", window: "Últimos 30 días", confirmationRequired: true },
+  { key: "SYNCHRONIZED_COMPLETIONS", source: "QuoteThread.completedAt + RequestEvent", window: "Últimos 30 días", confirmationRequired: true },
+  { key: "REVIEW_BURST", source: "Review.createdAt + RequestEvent", window: "Últimas 24 horas", confirmationRequired: true },
+  { key: "ACCOUNT_CLUSTER", source: "User.createdAt + QuoteThread.senderId", window: "Últimos 30 días", confirmationRequired: true },
+  { key: "PROFILE_RECREATION", source: "Provider lineage group + Provider.status", window: "Histórico", confirmationRequired: true },
+  { key: "ACTION_VOLUME", source: "QuoteThread/QuoteMessage/Review timestamps", window: "Última hora", confirmationRequired: true },
+];
 
 const clamp=(value:number,min=0,max=100)=>Math.min(max,Math.max(min,value));
 

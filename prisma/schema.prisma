@@ -227,6 +227,9 @@ model Provider {
   id     String @id @default(cuid())
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  riskLineageRootId String?
+  riskLineageRoot   Provider?  @relation("ProviderRiskLineage", fields: [riskLineageRootId], references: [id], onDelete: SetNull)
+  riskLineageMembers Provider[] @relation("ProviderRiskLineage")
 
   displayName   String
   slug          String  @unique
@@ -303,6 +306,7 @@ model Provider {
   @@index([status])
   @@index([statusUpdatedById])
   @@index([userId])
+  @@index([riskLineageRootId])
   @@index([slug])
 }
 
@@ -538,6 +542,7 @@ model RiskReport {
   resolvedBy                    User?     @relation("RiskReportResolvedBy", fields: [resolvedByUserId], references: [id], onDelete: SetNull)
   signalEvidence                RiskSignalEvidence[]
   reputationEvents              ReputationEvent[]
+  moderationApprovals           ModerationActionApproval[]
 
   @@index([providerId])
   @@index([status])
@@ -560,6 +565,7 @@ model RiskSignalEvidence {
   windowStart     DateTime
   windowEnd       DateTime
   sourceEventIds  Json?
+  sourceRecordIds Json?
   algorithmVersion String
   createdAt       DateTime    @default(now())
 
@@ -591,6 +597,8 @@ model ModerationActionApproval {
   action            String
   targetType        String
   targetId          String
+  riskReportId      String?
+  riskReport        RiskReport? @relation(fields: [riskReportId], references: [id], onDelete: SetNull)
   requestedByUserId String
   requestedBy       User     @relation("ModerationApprovalRequester", fields: [requestedByUserId], references: [id], onDelete: Cascade)
   approvedByUserId  String?
@@ -603,6 +611,7 @@ model ModerationActionApproval {
   expiresAt         DateTime
 
   @@index([targetType, targetId, status])
+  @@index([riskReportId])
   @@index([requestedByUserId, status])
   @@index([approvedByUserId])
   @@index([expiresAt])

@@ -1571,8 +1571,9 @@ async function startServer() {
         threshold: true,
         contribution: true,
         windowStart: true,
-        windowEnd: true,
-        algorithmVersion: true,
+         windowEnd: true,
+         sourceRecordIds: true,
+         algorithmVersion: true,
       },
       orderBy: { createdAt: "desc" },
     },
@@ -1614,12 +1615,20 @@ async function startServer() {
       const parsed = riskReportQuerySchema.safeParse(req.query);
       if (!parsed.success) return res.status(400).json({ success: false, error: "Filtro de estado inválido", details: parsed.error.issues });
       const { status } = parsed.data;
-      const reports = await prisma.riskReport.findMany({
+       const reports = await prisma.riskReport.findMany({
         where: status ? { status } : undefined,
         include: riskReportInclude,
-        orderBy: [{ status: "asc" }, { generatedAt: "desc" }],
-      });
-       res.json({ success: true, data: reports.map(toRiskReportDto) });
+         orderBy: [{ status: "asc" }, { generatedAt: "desc" }],
+       });
+       await createModerationAuditLog({
+         actorUserId: req.user.userId,
+         action: "RISK_REPORTS_ACCESSED",
+         targetType: "RISK_REPORT_COLLECTION",
+         targetId: status ?? "ALL",
+         reason: "Acceso administrativo a reportes de riesgo",
+         metadata: { status: status ?? null, resultCount: reports.length },
+       });
+        res.json({ success: true, data: reports.map(toRiskReportDto) });
     } catch (error) {
       console.error("Admin reports error:", error);
       res.status(500).json({ success: false, error: "Error al obtener reportes" });
@@ -1632,8 +1641,16 @@ async function startServer() {
         where: { id: req.params.id },
         include: riskReportInclude,
       });
-      if (!report) return res.status(404).json({ success: false, error: "Reporte no encontrado" });
-       res.json({ success: true, data: toRiskReportDto(report) });
+       if (!report) return res.status(404).json({ success: false, error: "Reporte no encontrado" });
+       await createModerationAuditLog({
+         actorUserId: req.user.userId,
+         action: "RISK_REPORT_ACCESSED",
+         targetType: "RISK_REPORT",
+         targetId: report.id,
+         reason: "Acceso administrativo al detalle de un reporte de riesgo",
+         metadata: { providerId: report.providerId },
+       });
+        res.json({ success: true, data: toRiskReportDto(report) });
     } catch (error) {
       console.error("Admin report detail error:", error);
       res.status(500).json({ success: false, error: "Error al obtener el reporte" });
@@ -1664,6 +1681,9 @@ async function startServer() {
       if (currentReport.status === "ACTION_TAKEN") {
         return res.status(409).json({ success: false, error: "Este reporte ya tiene una acción confirmada" });
       }
+      if (currentReport.status === status) {
+        return res.status(409).json({ success: false, error: "El reporte ya se encuentra en ese estado" });
+      }
 
       const updateData: Record<string, unknown> = {
         status,
@@ -1683,9 +1703,14 @@ async function startServer() {
       }
 
       const report = await prisma.$transaction(async (tx) => {
-        const updatedReport = await tx.riskReport.update({
-          where: { id: req.params.id },
+        const claimed = await tx.riskReport.updateMany({
+          where: { id: req.params.id, status: currentReport.status },
           data: updateData,
+        });
+        if (claimed.count !== 1) throw new Error("REPORT_ALREADY_PROCESSED");
+
+        const updatedReport = await tx.riskReport.findUniqueOrThrow({
+          where: { id: req.params.id },
           include: riskReportInclude,
         });
 
@@ -1720,6 +1745,9 @@ async function startServer() {
 
       res.json({ success: true, data: toRiskReportDto(report) });
     } catch (error) {
+      if ((error as Error).message === "REPORT_ALREADY_PROCESSED") {
+        return res.status(409).json({ success: false, error: "Este reporte ya fue actualizado por otra revisión" });
+      }
       console.error("Update risk report status error:", error);
       res.status(500).json({ success: false, error: "Error al actualizar el reporte" });
     }
@@ -1733,30 +1761,43 @@ async function startServer() {
       const { reviewerNotes, reason } = parsed.data;
       const note = (reviewerNotes?.trim() || reason?.trim())!;
 
-      const report = await prisma.riskReport.update({
-        where: { id: req.params.id },
-        data: {
-          status: "ESCALATED",
-          reviewerNotes: note,
-          reviewedAt: new Date(),
-          reviewedByUserId: userId,
-          escalatedAt: new Date(),
-          escalatedByUserId: userId,
-        },
-        include: riskReportInclude,
+      const report = await prisma.$transaction(async (tx) => {
+        const claimed = await tx.riskReport.updateMany({
+          where: { id: req.params.id, status: { in: ["OPEN", "UNDER_REVIEW"] } },
+          data: {
+            status: "ESCALATED",
+            reviewerNotes: note,
+            reviewedAt: new Date(),
+            reviewedByUserId: userId,
+            escalatedAt: new Date(),
+            escalatedByUserId: userId,
+          },
+        });
+        if (claimed.count !== 1) throw new Error("REPORT_ALREADY_PROCESSED");
+        const escalated = await tx.riskReport.findUniqueOrThrow({
+          where: { id: req.params.id },
+          include: riskReportInclude,
+        });
+        await tx.moderationAuditLog.create({
+          data: {
+            actorUserId: userId,
+            action: "REPORT_ESCALATED",
+            targetType: "RISK_REPORT",
+            targetId: escalated.id,
+            reason: note,
+            metadata: { providerId: escalated.providerId, status: "ESCALATED" },
+          },
+        });
+        return escalated;
       });
 
-      await createModerationAuditLog({
-        actorUserId: userId,
-        action: "REPORT_ESCALATED",
-        targetType: "RISK_REPORT",
-        targetId: report.id,
-        reason: note,
-        metadata: { providerId: report.providerId, status: "ESCALATED" },
-      });
+      await recalculateProviderTrustScore(report.providerId);
 
       res.json({ success: true, data: toRiskReportDto(report) });
     } catch (error) {
+      if ((error as Error).message === "REPORT_ALREADY_PROCESSED") {
+        return res.status(409).json({ success: false, error: "Este reporte ya fue actualizado por otra revisión" });
+      }
       console.error("Escalate risk report error:", error);
       res.status(500).json({ success: false, error: "Error al escalar el reporte" });
     }
@@ -1830,6 +1871,15 @@ async function startServer() {
       if (!canTransition(provider.status, targetStatus)) {
         return res.status(409).json({ success: false, error: "No se puede solicitar esta acción desde el estado actual del proveedor" });
       }
+      if (parsed.data.riskReportId) {
+        const report = await prisma.riskReport.findFirst({
+          where: { id: parsed.data.riskReportId, providerId: provider.id, status: { in: ["OPEN", "UNDER_REVIEW", "ESCALATED"] } },
+          select: { id: true },
+        });
+        if (!report) {
+          return res.status(409).json({ success: false, error: "El reporte de riesgo no está disponible para esta acción" });
+        }
+      }
 
       const approval = await prisma.$transaction(async (tx) => {
         const created = await tx.moderationActionApproval.create({
@@ -1837,6 +1887,7 @@ async function startServer() {
             action: parsed.data.action,
             targetType: "PROVIDER",
             targetId: provider.id,
+            riskReportId: parsed.data.riskReportId,
             requestedByUserId: userId,
             reason: parsed.data.reason,
             suspendedUntil: parsed.data.suspendedUntil ? new Date(parsed.data.suspendedUntil) : null,
@@ -1900,7 +1951,24 @@ async function startServer() {
         return res.status(409).json({ success: false, error: "Esta solicitud de aprobación ya fue procesada" });
       }
       if (approval.expiresAt <= new Date()) {
-        await prisma.moderationActionApproval.update({ where: { id: approval.id }, data: { status: "EXPIRED" } });
+        await prisma.$transaction(async (tx) => {
+          const expired = await tx.moderationActionApproval.updateMany({
+            where: { id: approval.id, status: "PENDING" },
+            data: { status: "EXPIRED" },
+          });
+          if (expired.count === 1) {
+            await tx.moderationAuditLog.create({
+              data: {
+                actorUserId: userId,
+                action: "MODERATION_APPROVAL_EXPIRED",
+                targetType: "PROVIDER",
+                targetId: approval.targetId,
+                reason: "La aprobación superó su ventana de validez",
+                metadata: { approvalId: approval.id, action: approval.action },
+              },
+            });
+          }
+        });
         return res.status(409).json({ success: false, error: "La solicitud de aprobación expiró" });
       }
 
@@ -1944,8 +2012,54 @@ async function startServer() {
             metadata: { approvalId: approval.id, requestedByUserId: approval.requestedByUserId },
           },
         });
+
+        if (approval.riskReportId) {
+          const report = await tx.riskReport.findFirst({
+            where: {
+              id: approval.riskReportId,
+              providerId: provider.id,
+              status: { in: ["OPEN", "UNDER_REVIEW", "ESCALATED"] },
+            },
+            select: { id: true, penalty: true },
+          });
+          if (!report) throw new Error("REPORT_ALREADY_PROCESSED");
+          const resolved = await tx.riskReport.updateMany({
+            where: { id: report.id, status: { in: ["OPEN", "UNDER_REVIEW", "ESCALATED"] } },
+            data: {
+              status: "ACTION_TAKEN",
+              reviewerNotes: approval.reason,
+              reviewedAt: new Date(),
+              reviewedByUserId: userId,
+              resolvedAt: new Date(),
+              resolvedByUserId: userId,
+            },
+          });
+          if (resolved.count !== 1) throw new Error("REPORT_ALREADY_PROCESSED");
+          if (report.penalty > 0) {
+            await createReputationEvidence(tx, {
+              providerId: provider.id,
+              riskReportId: report.id,
+              evidenceType: "PENALTY_SUSPICIOUS_ACTIVITY",
+              evidenceWeight: report.penalty,
+              algorithmVersion: "trust-v2.0.0",
+              tx,
+            });
+          }
+          await tx.moderationAuditLog.create({
+            data: {
+              actorUserId: userId,
+              action: "REPORT_ACTION_TAKEN",
+              targetType: "RISK_REPORT",
+              targetId: report.id,
+              reason: approval.reason,
+              metadata: { providerId: provider.id, approvalId: approval.id },
+            },
+          });
+        }
         return updated;
       });
+
+      await recalculateProviderTrustScore(approval.targetId);
 
       return res.json({ success: true, data: result });
     } catch (error) {
@@ -1953,6 +2067,7 @@ async function startServer() {
       if (message === "APPROVAL_ALREADY_PROCESSED") return res.status(409).json({ success: false, error: "Esta solicitud de aprobación ya fue procesada" });
       if (message === "PROVIDER_NOT_FOUND") return res.status(404).json({ success: false, error: "Proveedor no encontrado" });
       if (message === "INVALID_TRANSITION") return res.status(409).json({ success: false, error: "No se puede ejecutar la acción desde el estado actual del proveedor" });
+      if (message === "REPORT_ALREADY_PROCESSED") return res.status(409).json({ success: false, error: "El reporte asociado ya fue resuelto" });
       console.error("Approve moderation error:", error);
       res.status(500).json({ success: false, error: "Error al aprobar la acción de moderación" });
     }
@@ -2178,6 +2293,11 @@ async function startServer() {
             },
           },
         },
+      });
+
+      await prisma.provider.update({
+        where: { id: provider.id },
+        data: { riskLineageRootId: provider.id },
       });
 
       await prisma.user.update({

@@ -1,7 +1,6 @@
 import { prisma } from "./db";
 import type { RiskScoreInput } from "../domain/risk/calculateRiskScore";
 import { calculateRiskScore } from "../domain/risk/calculateRiskScore";
-import { TRUST_SCORE_ALGORITHM_VERSION } from "../domain/rating/calculateTrustScoreV2";
 import { recalculateProviderTrustScore } from "./trust-score-service";
 
 export async function extractProviderMetrics(providerId: string): Promise<RiskScoreInput> {
@@ -9,10 +8,13 @@ export async function extractProviderMetrics(providerId: string): Promise<RiskSc
     where: { providerId },
     include: {
       messages: true,
+      requestEvents: { select: { id: true, eventType: true } },
       sender: {
         select: {
           id: true,
           createdAt: true,
+          isSynthetic: true,
+          collusionConfirmed: true,
         },
       },
     },
@@ -25,12 +27,21 @@ export async function extractProviderMetrics(providerId: string): Promise<RiskSc
         select: {
           id: true,
           createdAt: true,
+          isSynthetic: true,
+          collusionConfirmed: true,
         },
       },
     },
   });
 
-  if (threads.length === 0) {
+  const eligibleThreads = threads.filter((thread) =>
+    !thread.sender?.isSynthetic && !thread.sender?.collusionConfirmed
+  );
+  const eligibleReviews = reviews.filter((review) =>
+    !review.reviewer?.isSynthetic && !review.reviewer?.collusionConfirmed
+  );
+
+  if (eligibleThreads.length === 0) {
     // No activity yet: signals are unknown, not suspicious. Returning zeros
     // here made every new provider score as "ultra-fast completion + minimal
     // conversation".
@@ -41,19 +52,24 @@ export async function extractProviderMetrics(providerId: string): Promise<RiskSc
       newAccountsPercentage: null,
       repeatedTargetProviderScore: null,
       ratingConcentrationScore: null,
+      profileRecreationScore: await calculateProfileRecreation(providerId),
+      synchronizedCompletionScore: null,
+      reviewBurstScore: null,
+      accountClusterScore: null,
+      actionVolumeScore: null,
     };
   }
 
-  const avgRequestToCompletionMinutes = calculateAvgCompletionTime(threads);
-  const avgMessagesPerRequest = calculateAvgMessages(threads);
-  const newAccountsPercentage = calculateNewAccountsPercentage(threads);
-  const repeatedTargetProviderScore = calculateRepeatedTargetScore(threads);
-  const ratingConcentrationScore = calculateRatingConcentration(reviews);
-  const synchronizedCompletionScore = calculateSynchronizedCompletions(threads);
-  const reviewBurstScore = calculateReviewBurst(reviews);
-  const accountClusterScore = calculateAccountCluster(threads);
+  const avgRequestToCompletionMinutes = calculateAvgCompletionTime(eligibleThreads);
+  const avgMessagesPerRequest = calculateAvgMessages(eligibleThreads);
+  const newAccountsPercentage = calculateNewAccountsPercentage(eligibleThreads);
+  const repeatedTargetProviderScore = calculateRepeatedTargetScore(eligibleThreads);
+  const ratingConcentrationScore = calculateRatingConcentration(eligibleReviews);
+  const synchronizedCompletionScore = calculateSynchronizedCompletions(eligibleThreads);
+  const reviewBurstScore = calculateReviewBurst(eligibleReviews);
+  const accountClusterScore = calculateAccountCluster(eligibleThreads);
   const profileRecreationScore = await calculateProfileRecreation(providerId);
-  const actionVolumeScore = calculateActionVolume(threads, reviews);
+  const actionVolumeScore = calculateActionVolume(eligibleThreads, eligibleReviews);
 
   return {
     // Search telemetry does not exist yet (no SearchEvent model); report it
@@ -211,7 +227,9 @@ function calculateAccountCluster(threads: any[]): number | null {
 function calculateActionVolume(threads: any[], reviews: any[]): number | null {
   const timestamps = [
     ...threads.map((thread) => new Date(thread.createdAt).getTime()),
-    ...threads.flatMap((thread) => thread.messages.map((message: any) => new Date(message.createdAt).getTime())),
+    ...threads.flatMap((thread) => thread.messages
+      .filter((message: any) => message.authorRole !== "system")
+      .map((message: any) => new Date(message.createdAt).getTime())),
     ...reviews.map((review) => new Date(review.createdAt).getTime()),
   ].filter(Number.isFinite).sort((a, b) => a - b);
 
@@ -232,12 +250,18 @@ function calculateActionVolume(threads: any[], reviews: any[]): number | null {
 async function calculateProfileRecreation(providerId: string): Promise<number | null> {
   const provider = await prisma.provider.findUnique({
     where: { id: providerId },
-    select: { userId: true },
+    select: { riskLineageRootId: true },
   });
   if (!provider) return null;
 
+  const rootId = provider.riskLineageRootId ?? providerId;
   const profiles = await prisma.provider.findMany({
-    where: { userId: provider.userId },
+    where: {
+      OR: [
+        { id: rootId },
+        { riskLineageRootId: rootId },
+      ],
+    },
     select: { status: true },
   });
   if (profiles.length < 2) return 0;
@@ -248,8 +272,39 @@ async function calculateProfileRecreation(providerId: string): Promise<number | 
 
 export async function analyzeProviderRisk(providerId: string): Promise<void> {
   const metrics = await extractProviderMetrics(providerId);
+  const threads = await prisma.quoteThread.findMany({
+    where: { providerId },
+    select: { requestEvents: { select: { id: true, eventType: true } } },
+  });
   
   const riskResult = calculateRiskScore(metrics);
+  const allRequestEventIds = threads.flatMap((thread) => thread.requestEvents.map((event) => event.id));
+  const completionEventIds = threads.flatMap((thread) => thread.requestEvents
+    .filter((event) => event.eventType === "COMPLETION_CONFIRMED")
+    .map((event) => event.id));
+  const messageEventIds = threads.flatMap((thread) => thread.requestEvents
+    .filter((event) => event.eventType === "MESSAGE_SENT")
+    .map((event) => event.id));
+  const reviews = await prisma.review.findMany({
+    where: { providerId },
+    select: { id: true, reviewer: { select: { isSynthetic: true, collusionConfirmed: true } } },
+  });
+  const eligibleReviewIds = reviews
+    .filter((review) => !review.reviewer.isSynthetic && !review.reviewer.collusionConfirmed)
+    .map((review) => review.id);
+  const sourceIds: Partial<Record<(typeof riskResult.signals)[number]["key"], string[]>> = {
+    FAST_SEARCH: [],
+    FAST_COMPLETION: completionEventIds,
+    LOW_MESSAGE_COUNT: messageEventIds,
+    NEW_ACCOUNT_CONCENTRATION: allRequestEventIds,
+    REPEATED_PROVIDER_TARGET: allRequestEventIds,
+    RATING_CONCENTRATION: [],
+    SYNCHRONIZED_COMPLETIONS: completionEventIds,
+    REVIEW_BURST: [],
+    ACCOUNT_CLUSTER: allRequestEventIds,
+    PROFILE_RECREATION: [],
+    ACTION_VOLUME: allRequestEventIds,
+  };
   
   if (!riskResult.shouldGenerateReport) {
     return;
@@ -317,8 +372,13 @@ export async function analyzeProviderRisk(providerId: string): Promise<void> {
         contribution: signal.contribution,
         windowStart,
         windowEnd,
-        sourceEventIds: [],
-        algorithmVersion: TRUST_SCORE_ALGORITHM_VERSION,
+        sourceEventIds: sourceIds[signal.key] ?? [],
+        sourceRecordIds: signal.key === "RATING_CONCENTRATION" || signal.key === "REVIEW_BURST"
+          ? eligibleReviewIds
+          : signal.key === "PROFILE_RECREATION"
+            ? [providerId]
+            : [],
+        algorithmVersion: "risk-v1.0.0",
       })),
     });
   });

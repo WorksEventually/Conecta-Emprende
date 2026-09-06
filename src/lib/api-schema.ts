@@ -113,6 +113,7 @@ export const moderationApprovalActionSchema = z.object({
   action: z.enum(["SUSPEND", "BAN"]),
   reason: requiredReason,
   suspendedUntil: z.string().datetime({ message: "La fecha de suspensión no es válida" }).optional(),
+  riskReportId: z.string().trim().min(1).max(64).optional(),
 });
 
 export const moderationApprovalDecisionSchema = z.object({}).strict();

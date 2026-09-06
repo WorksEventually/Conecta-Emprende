@@ -97,10 +97,10 @@ export default function AdminReportsPage() {
     if (!selected) return;
     setError(null);
     try {
-       if (action === "suspend") await adminApi.requestModerationApproval(selected.provider.id, { action: "SUSPEND", reason, suspendedUntil: suspendedUntil || undefined });
+       if (action === "suspend") await adminApi.requestModerationApproval(selected.provider.id, { action: "SUSPEND", reason, suspendedUntil: suspendedUntil || undefined, riskReportId: selected.id });
       if (action === "restrict") await adminApi.restrictProvider(selected.provider.id, { reason, suspendedUntil: suspendedUntil || undefined });
       if (action === "inactivate") await adminApi.inactivateProvider(selected.provider.id, reason);
-       if (action === "ban") await adminApi.requestModerationApproval(selected.provider.id, { action: "BAN", reason });
+       if (action === "ban") await adminApi.requestModerationApproval(selected.provider.id, { action: "BAN", reason, riskReportId: selected.id });
       if (action === "reactivate") await adminApi.reactivateProvider(selected.provider.id, reason);
        if (action !== "suspend" && action !== "ban") {
          await adminApi.updateRiskReportStatus(selected.id, { status: "ACTION_TAKEN", reason: reason || "Acción de moderación aplicada" });

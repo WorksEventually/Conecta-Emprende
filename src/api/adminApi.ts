@@ -13,6 +13,7 @@ export interface ModerationActionApproval {
   action: "SUSPEND" | "BAN";
   targetType: "PROVIDER";
   targetId: string;
+  riskReportId: string | null;
   requestedByUserId: string;
   requestedBy?: { id: string; name: string | null };
   approvedByUserId: string | null;
@@ -57,6 +58,7 @@ export interface AdminRiskReport {
     contribution: number;
     windowStart: string;
     windowEnd: string;
+    sourceRecordIds: string[];
     algorithmVersion: string;
   }>;
   status: AdminRiskReportStatus;
@@ -144,7 +146,7 @@ export const adminApi = {
       method: "POST",
       body: JSON.stringify({ reason }),
     }),
-  requestModerationApproval: (providerId: string, data: { action: "SUSPEND" | "BAN"; reason: string; suspendedUntil?: string }) =>
+  requestModerationApproval: (providerId: string, data: { action: "SUSPEND" | "BAN"; reason: string; suspendedUntil?: string; riskReportId?: string }) =>
     adminRequest<ModerationActionApproval>(`/api/admin/providers/${encodeURIComponent(providerId)}/moderation-approvals`, {
       method: "POST",
       body: JSON.stringify(data),
