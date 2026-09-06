@@ -66,7 +66,7 @@ export default function ProviderPage() {
   const medals = currentProvider?.medals || [];
   const photos = currentProvider?.photos || [];
   const portfolioImages = photos.map((p: any) => p.imageUrl).filter(Boolean);
-  const trustScore = currentProvider?.provider?.trustScore?.finalScore ?? currentProvider?.provider?.trustScore ?? 0;
+  const trustScore = currentProvider?.provider?.trustScore?.publicScore ?? null;
 
   const activeItems = useMemo(
     () => catalogItems.filter((item: any) => item.availabilityStatus === "DISPONIBLE"),
@@ -106,7 +106,7 @@ export default function ProviderPage() {
   const blockedFromQuotes = isLifecycleBlockingStatus(providerStatus);
   const statusBanner = getProviderStatusBanner(providerStatus);
   const activeOfferCount = activeItems.length;
-  const publicProfileSignal = trustScore >= 80 && activeOfferCount > 0 ? "Perfil comercial sólido" : "Perfil en construcción";
+  const publicProfileSignal = trustScore !== null && trustScore >= 80 && activeOfferCount > 0 ? "Perfil comercial sólido" : "Perfil en construcción";
 
   return (
     <div className="provider-page">
@@ -130,7 +130,7 @@ export default function ProviderPage() {
           </div>
           <div className="badges">
             <TrustScoreBadge
-              trustScore={trustScore ? trustScore : null}
+               trustScore={trustScore}
               bilateralCompletions={provider.metrics?.bilateralCompletions ?? 0}
               phoneVerified={provider.verified}
             />
@@ -305,7 +305,7 @@ export default function ProviderPage() {
         <aside className="profile-sidebar">
           <section>
             <h2><ShieldCheck /> Confianza y reputación</h2>
-            <strong className="big-score">{trustScore}<small>/100</small></strong>
+             <strong className="big-score">{trustScore ?? "Evidencia insuficiente"}{trustScore !== null && <small>/100</small>}</strong>
             <p>
               Se calcula con solicitudes completadas dentro de la plataforma, reseñas verificadas y nivel del perfil.
               Las conversaciones externas no suman al historial.

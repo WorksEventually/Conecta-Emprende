@@ -69,6 +69,8 @@ model User {
   role          Role      @default(USER)
   password      String?
   emailVerified DateTime?
+  isSynthetic Boolean @default(false)
+  collusionConfirmed Boolean @default(false)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
@@ -270,6 +272,7 @@ model Provider {
   aboutDescription String? @db.Text
 
   createdAt DateTime @default(now())
+  activatedAt DateTime?
   updatedAt DateTime @updatedAt
 
   trustScore          TrustScore?
@@ -402,6 +405,11 @@ model ProviderMetrics {
   requestsResponded         Int      @default(0)
   suspiciousActivityPenalty Float    @default(0)
   trustScore                Float    @default(0)
+  publicTrustScore          Float?
+  evidenceLevel             String   @default("INSUFFICIENT_EVIDENCE")
+  publicScoreFrozen         Boolean  @default(false)
+  growthHold                Boolean  @default(false)
+  algorithmVersion          String   @default("trust-v2.0.0")
   bilateralCompletions      Int      @default(0)
   uniqueRequesters          Int      @default(0)
   lastRecalculatedAt        DateTime?
@@ -486,6 +494,10 @@ model TrustScoreSnapshot {
   accountAgeFactor          Float
   suspiciousActivityPenalty Float
   finalScore                Float
+  publicScore               Float?
+  evidenceLevel             String   @default("INSUFFICIENT_EVIDENCE")
+  breakdown                 Json?
+  caps                      Json?
   algorithmVersion          String   @default("v1-rule-based")
   calculatedAt              DateTime @default(now())
 

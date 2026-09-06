@@ -192,7 +192,8 @@ export async function calculateEvidenceWeights(
 
 export async function rebuildTrustScoreFromEvents(
   prisma: PrismaClient,
-  providerId: string
+  providerId: string,
+  algorithmVersion: string = 'trust-v2.0.0'
 ): Promise<{
   completionHistoryScore: number;
   ratingQualityScore: number;
@@ -202,6 +203,7 @@ export async function rebuildTrustScoreFromEvents(
     where: {
       providerId,
       invalidatedAt: null,
+      algorithmVersion,
     },
     select: {
       evidenceType: true,

@@ -74,12 +74,12 @@ export default function SearchPage() {
           (!cityTarget || provider.city === cityTarget) &&
           (!categoryTarget || norm(provider.category).includes(norm(categoryTarget))) &&
           (!price || provider.priceRange === price) &&
-          provider.trustScore >= trust;
+           (provider.trustScore ?? -1) >= trust;
 
         return { ...provider, match };
       })
       .filter((provider: any) => provider.match)
-      .sort((a: any, b: any) => (b.finalScore ?? b.trustScore) - (a.finalScore ?? a.trustScore));
+       .sort((a: any, b: any) => (b.trustScore ?? -1) - (a.trustScore ?? -1));
   }, [providers, city, category, price, trust, aiIntent]);
 
   const mapProviders = useMemo<SearchMapProvider[]>(() => {
@@ -90,14 +90,14 @@ export default function SearchPage() {
       city: provider.city,
       lat: provider.lat,
       lng: provider.lng,
-      trustScore: provider.trustScore,
+       trustScore: provider.trustScore,
       availabilityLabel: availabilityLabel[provider.availability] || provider.availability,
       status: provider.status,
       statusReason: provider.statusReason,
       suspendedUntil: provider.suspendedUntil,
       priceLabel: priceLabel[provider.priceRange] || provider.priceRange || "",
       verificationLabel: { UNVERIFIED: "Sin verificar", PHONE: "Teléfono verificado", COMPLETE: "Perfil verificado" }[provider.verificationLevel] || provider.verificationLevel || "Sin verificar",
-      profileSignalLabel: provider.trustScore >= 80 ? "Perfil comercial sólido" : "Perfil en construcción",
+       profileSignalLabel: provider.trustScore == null ? "Evidencia insuficiente" : provider.trustScore >= 80 ? "Perfil comercial sólido" : "Perfil en construcción",
       description: provider.shortDescription || "",
       image: provider.photos?.[0] || "",
       isOwnProfile: provider.id === ownedProviderId,
