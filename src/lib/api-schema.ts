@@ -109,6 +109,13 @@ export const providerSuspendSchema = z.object({
 
 export const providerModerationReasonSchema = z.object({ reason: requiredReason });
 
+export const moderationApprovalActionSchema = z.object({
+  reason: requiredReason,
+  suspendedUntil: z.string().datetime({ message: "La fecha de suspensión no es válida" }).optional(),
+});
+
+export const moderationApprovalDecisionSchema = z.object({}).strict();
+
 export const providerCreateSchema = z.object({
   displayName: z.string().trim().min(1).max(120),
   category: z.string().trim().min(1).max(120),

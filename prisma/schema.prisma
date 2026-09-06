@@ -87,6 +87,8 @@ model User {
   providers             Provider[]
   roleAssignments       RoleAssignment[]
   moderationAuditLogs   ModerationAuditLog[] @relation("ModerationAuditActor")
+  requestedModerationActions ModerationActionApproval[] @relation("ModerationApprovalRequester")
+  approvedModerationActions ModerationActionApproval[] @relation("ModerationApprovalApprover")
   providerStatusUpdates Provider[]           @relation("ProviderStatusUpdatedBy")
   escalatedRiskReports  RiskReport[]         @relation("RiskReportEscalatedBy")
   resolvedRiskReports   RiskReport[]         @relation("RiskReportResolvedBy")
@@ -582,6 +584,28 @@ model ModerationAuditLog {
   @@index([action])
   @@index([targetType, targetId])
   @@index([createdAt])
+}
+
+model ModerationActionApproval {
+  id                String   @id @default(cuid())
+  action            String
+  targetType        String
+  targetId          String
+  requestedByUserId String
+  requestedBy       User     @relation("ModerationApprovalRequester", fields: [requestedByUserId], references: [id], onDelete: Cascade)
+  approvedByUserId  String?
+  approvedBy        User?    @relation("ModerationApprovalApprover", fields: [approvedByUserId], references: [id], onDelete: SetNull)
+  status            String   @default("PENDING")
+  reason            String   @db.Text
+  suspendedUntil    DateTime?
+  requestedAt       DateTime @default(now())
+  approvedAt        DateTime?
+  expiresAt         DateTime
+
+  @@index([targetType, targetId, status])
+  @@index([requestedByUserId, status])
+  @@index([approvedByUserId])
+  @@index([expiresAt])
 }
 
 // ──────────────────────────────────────────────────────────
