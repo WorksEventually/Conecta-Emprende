@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="es"><head><meta charset="utf-8"><title>Conecta Emprende — Mockups alta fidelidad (preview QA)</title>
+<style>
+:root{--primary:#001F3F;--accent:#004080;--secondary:#C0C0C0;--neutral:#F5F5F5;--surface:#FBFBFB;--error:#B0543E;--text:#1A1A1A;--muted:#5A6472;--border:#E2E8F0;--green:#2F7D4F;--green-bg:#EAF4EC;--blue-bg:#E8F1FA;--amber:#8A6D3B;--amber-bg:#F5F1EA;--star:#D9A441}
+*{margin:0;box-sizing:border-box}
+body{font-family:Inter,'Segoe UI',sans-serif;background:#DDD;padding:24px;display:flex;flex-direction:column;gap:32px;align-items:center}
+.screen{background:var(--neutral);width:1240px;border-radius:12px;overflow:hidden;box-shadow:0 8px 30px rgba(0,0,0,.15)}
+.navbar{height:64px;background:#fff;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 32px}
+.logo{display:flex;align-items:center;gap:10px}
+.logo-mark{width:30px;height:30px;border-radius:8px;background:var(--primary);color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700}
+.logo-name{font-size:17px;font-weight:700;color:var(--primary)}
+.nav-links{display:flex;gap:20px;font-size:14px;color:var(--muted)}
+.nav-links .active{color:var(--primary);font-weight:700}
+.nav-actions{display:flex;gap:10px}
+.btn-outline{height:36px;padding:0 14px;border:1px solid var(--secondary);border-radius:8px;display:flex;align-items:center;font-size:14px;font-weight:600;color:var(--primary);background:#fff}
+.btn-accent{height:36px;padding:0 14px;border-radius:8px;display:flex;align-items:center;font-size:14px;font-weight:600;color:#fff;background:var(--accent)}
+.hero{display:flex;gap:40px;padding:36px 48px 28px}
+.hero-left{width:660px;display:flex;flex-direction:column;gap:16px}
+.eyebrow{font-size:12px;font-weight:700;color:var(--accent)}
+h1{font-size:38px;line-height:1.15;color:var(--primary)}
+.sub{font-size:16px;color:var(--muted)}
+.searchbar{height:54px;background:#fff;border:1.5px solid var(--secondary);border-radius:10px;display:flex;align-items:center;gap:10px;padding:0 8px 0 16px}
+.searchbar .ph{flex:1;font-size:15px;color:var(--muted)}
+.searchbar .btn-accent{height:40px}
+.chips{display:flex;gap:8px}
+.chip{height:30px;padding:0 12px;background:#fff;border:1px solid var(--secondary);border-radius:15px;display:flex;align-items:center;font-size:12px;color:var(--text)}
+.link-ciudades{font-size:14px;font-weight:600;color:var(--accent)}
+.trust-panel{flex:1;background:var(--surface);border:1px solid var(--secondary);border-radius:12px;padding:20px;display:flex;flex-direction:column;gap:14px}
+.trust-panel .title{font-size:13px;font-weight:600;color:var(--muted)}
+.stat{display:flex;align-items:center;gap:12px}
+.stat .v{font-size:30px;font-weight:700;color:var(--primary)}
+.stat .l{font-size:13px;color:var(--muted)}
+.principles{display:flex;gap:16px;padding:0 48px 8px}
+.principle{flex:1;background:#fff;border:1px solid var(--secondary);border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:8px}
+.principle .t{font-size:14px;font-weight:700;color:var(--primary)}
+.principle .d{font-size:12.5px;color:var(--muted)}
+.footer{display:flex;justify-content:space-between;padding:18px 48px 24px;font-size:12px;color:var(--muted)}
+.search-err{display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;color:var(--error);margin:-4px 0 0}
+.cities{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.city-chip{height:28px;padding:0 11px;background:#fff;border:1px solid var(--secondary);border-radius:14px;font-size:12px;color:var(--text);display:flex;align-items:center;gap:5px}
+.trust-h{font-size:14.5px;font-weight:700;color:var(--primary);line-height:1.3}
+.flow{display:flex;flex-direction:column;gap:8px;background:#fff;border:1px solid var(--secondary);border-radius:10px;padding:12px}
+.flow-step{display:flex;gap:8px;align-items:center;font-size:12.5px;color:var(--text)}
+.flow-n{width:20px;height:20px;border-radius:10px;background:var(--blue-bg);color:var(--accent);font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+/* Screen 2 */
+.search-wrap{padding:24px 32px 0}
+.page-title{font-size:24px;font-weight:700;color:var(--primary);margin-bottom:18px}
+.searchbar-ia{height:52px;background:#fff;border:1.5px solid var(--accent);border-radius:10px;display:flex;align-items:center;gap:10px;padding:0 8px 0 16px}
+.searchbar-ia .q{flex:1;font-size:15px;color:var(--text)}
+.searchbar-ia .btn-accent{height:38px}
+.inferred{display:flex;align-items:center;gap:8px;margin:12px 0 18px}
+.inferred .lbl{font-size:12.5px;color:var(--muted)}
+.inf-chip{height:26px;padding:0 12px;border-radius:13px;background:var(--blue-bg);color:var(--accent);font-size:12px;font-weight:600;display:flex;align-items:center}
+.results-main{display:flex;gap:18px;padding:0 32px 24px}
+.filters{width:230px;background:#fff;border:1px solid var(--secondary);border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:14px}
+.filters .f-title{font-size:14px;font-weight:700;color:var(--primary)}
+.filters .g{font-size:12px;font-weight:700;color:var(--muted)}
+.opt{display:flex;gap:8px;align-items:center;font-size:12.5px;color:var(--text);margin-top:4px}
+.box{width:14px;height:14px;border:1px solid var(--secondary);border-radius:3px;background:#fff}
+.slider{width:100%;height:4px;border-radius:2px;background:var(--secondary);position:relative;margin-top:6px}
+.slider .thumb{width:14px;height:14px;border-radius:7px;background:var(--accent);position:absolute;left:40px;top:-5px}
+.results{flex:1;display:flex;flex-direction:column;gap:12px}
+.count{font-size:13px;color:var(--muted)}
+.result-card{background:#fff;border:1px solid var(--secondary);border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:10px}
+.r-top{display:flex;gap:12px;align-items:center}
+.avatar{width:44px;height:44px;border-radius:22px;background:var(--blue-bg);color:var(--accent);font-size:14px;font-weight:700;display:flex;align-items:center;justify-content:center}
+.r-titles{flex:1}
+.r-titles .nm{font-size:16px;font-weight:700;color:var(--primary)}
+.r-titles .cat{font-size:12.5px;color:var(--muted)}
+.trust{height:24px;padding:0 10px;border-radius:12px;background:var(--green-bg);color:var(--green);font-size:11.5px;font-weight:700;display:flex;align-items:center}
+.desc{font-size:13.5px;color:var(--text)}
+.badges{display:flex;gap:6px}
+.b{height:22px;padding:0 9px;border-radius:11px;font-size:11px;font-weight:600;display:flex;align-items:center}
+.b-green{background:var(--green-bg);color:var(--green)}
+.b-blue{background:var(--blue-bg);color:var(--accent)}
+.b-amber{background:var(--amber-bg);color:var(--amber)}
+.why{background:var(--surface);border-radius:8px;padding:8px 10px;font-size:12px;color:var(--muted)}
+.cta{display:flex;justify-content:space-between;align-items:center}
+.cta .ct{font-size:12px;color:var(--muted)}
+.cta .btn-accent{height:34px;font-size:13px}
+.map{width:340px;background:#E9EEF3;border:1px solid var(--secondary);border-radius:10px;display:flex;flex-direction:column;overflow:hidden}
+.map-canvas{flex:1;position:relative;background:#DFE7EE}
+.pin{width:16px;height:16px;border-radius:8px;background:var(--accent);border:2px solid #fff;position:absolute}
+.map-overlay{padding:12px;background:rgba(255,255,255,.8);border-radius:8px;font-size:12px;font-weight:600;color:var(--text);text-align:center}
+/* Screen 3 */
+.cover{height:150px;background:var(--primary);padding:20px 32px}
+.back{color:#fff;font-size:13px;font-weight:600}
+.profile-head{display:flex;gap:20px;align-items:flex-end;padding:14px 32px 0}
+.photo{width:96px;height:96px;border-radius:48px;background:var(--blue-bg);border:4px solid #fff;color:var(--accent);font-size:28px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.p-titles{flex:1;display:flex;flex-direction:column;gap:4px}
+.p-cat{font-size:11.5px;font-weight:700;color:var(--accent)}
+.p-nm{font-size:26px;font-weight:700;color:var(--primary)}
+.p-tag{font-size:14px;color:var(--muted)}
+.p-meta{display:flex;flex-direction:column;gap:4px;align-items:flex-end;padding-bottom:6px}
+.p-meta .m{display:flex;gap:6px;align-items:center;font-size:12.5px;color:var(--muted)}
+.badge-row{display:flex;gap:8px;padding:12px 32px}
+.badge{height:28px;padding:0 12px;border-radius:14px;display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:700}
+.badge-green{background:var(--green-bg);color:var(--green)}
+.badge-blue{background:var(--blue-bg);color:var(--accent)}
+.badge-amber{background:var(--amber-bg);color:var(--amber)}
+.p-main{display:flex;gap:18px;padding:0 32px 24px}
+.p-left{flex:1;display:flex;flex-direction:column;gap:14px}
+.tabs{display:flex;gap:4px;background:#fff;border:1px solid var(--secondary);border-radius:10px;padding:4px;width:fit-content}
+.tab{height:32px;padding:0 14px;border-radius:7px;display:flex;align-items:center;font-size:13px;color:var(--muted)}
+.tab.on{background:var(--primary);color:#fff;font-weight:700}
+.offer{background:#fff;border:1px solid var(--secondary);border-radius:10px;padding:14px;display:flex;gap:14px;align-items:center}
+.thumb{width:64px;height:64px;border-radius:8px;background:#E9EEF3;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0}
+.o-txt{flex:1;display:flex;flex-direction:column;gap:3px}
+.o-row{display:flex;gap:8px;align-items:center}
+.o-nm{font-size:15px;font-weight:700;color:var(--primary)}
+.o-type{height:20px;padding:0 8px;border-radius:10px;background:var(--surface);color:var(--muted);font-size:10.5px;font-weight:600;display:flex;align-items:center}
+.o-ds{font-size:12.5px;color:var(--muted)}
+.o-side{display:flex;flex-direction:column;gap:8px;align-items:flex-end}
+.o-pr{font-size:15px;font-weight:700;color:var(--primary)}
+.o-btn{height:30px;padding:0 12px;border-radius:7px;background:var(--accent);color:#fff;font-size:12px;font-weight:600;display:flex;align-items:center}
+.rev-head{display:flex;align-items:center;gap:3px}
+.rev-head .rt{font-size:16px;font-weight:700;color:var(--primary);margin-right:auto}
+.rev-head .st{color:var(--star);font-size:14px}
+.review{background:#fff;border:1px solid var(--secondary);border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:6px}
+.r-h{display:flex;align-items:center;gap:8px}
+.r-h .w{font-size:13.5px;font-weight:700;color:var(--text)}
+.r-h .s{margin-left:auto;color:var(--star);font-size:12px;font-weight:700}
+.r-tx{font-size:13px;color:var(--text)}
+.seal{display:flex;gap:5px;align-items:center;color:var(--green);font-size:11.5px;font-weight:600}
+.p-side{width:300px;display:flex;flex-direction:column;gap:12px;align-self:flex-start}
+.t-card{background:#fff;border:1px solid var(--secondary);border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:10px}
+.t-card .t{font-size:13px;font-weight:700;color:var(--muted)}
+.score{display:flex;align-items:flex-end;gap:10px}
+.score .v{font-size:36px;font-weight:700;color:var(--primary);line-height:1}
+.score .of{font-size:14px;color:var(--muted);padding-bottom:6px}
+.m-row{display:flex;flex-direction:column;gap:4px}
+.l-h{display:flex;justify-content:space-between;font-size:11.5px;color:var(--muted)}
+.l-h .v{font-weight:700;color:var(--primary)}
+.bar{width:100%;height:5px;border-radius:3px;background:#E2E8F0}
+.bar .fill{height:5px;border-radius:3px;background:var(--accent)}
+.medals{background:#fff;border:1px solid var(--secondary);border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:8px}
+.medals .t{font-size:13px;font-weight:700;color:var(--muted)}
+.medals .m{display:flex;gap:8px;align-items:center;font-size:12.5px;color:var(--text)}
+.p-actions{display:flex;flex-direction:column;gap:8px}
+.btn-p{width:100%;height:42px;border-radius:10px;background:var(--accent);color:#fff;font-size:14px;font-weight:700;display:flex;align-items:center;justify-content:center}
+.btn-s{width:100%;height:38px;border-radius:10px;border:1px solid var(--secondary);background:#fff;color:var(--primary);font-size:13px;font-weight:600;display:flex;align-items:center;justify-content:center}
+.p-links{display:flex;justify-content:space-between;font-size:11.5px;color:var(--muted)}
+.p-links .rep{color:var(--error)}
+</style></head><body>
+<!-- SCREEN1 -->
+<section class="screen" id="s1">
+  <nav class="navbar">
+    <div class="nav-left">
+      <div class="logo"><div class="logo-mark">CE</div><div class="logo-name">Conecta Emprende</div></div>
+      <div class="nav-links"><span>Buscar proveedores</span><span>Cómo funciona la confianza</span></div>
+    </div>
+    <div class="nav-actions"><div class="btn-outline">Ingresar</div><div class="btn-accent">Crear cuenta</div></div>
+  </nav>
+  <div class="hero">
+    <div class="hero-left">
+      <div class="eyebrow">HECHO PARA EMPRENDER EN NICARAGUA</div>
+      <h1>Encontrá quién puede ayudarte a dar el siguiente paso</h1>
+      <p class="sub">Buscá proveedores en lenguaje natural, con confianza demostrada y reseñas con respaldo.</p>
+      <div class="searchbar"><span class="ph">¿Qué necesitás? Ej. empaques ecológicos en León</span><div class="btn-accent">Buscar proveedores</div></div>
+      <!-- Estado documentado (spec §1): búsqueda vacía → error inline con role="alert" -->
+      <div class="search-err">⚠ Escribí lo que necesitás para buscar proveedores.</div>
+      <div class="chips">
+        <div class="chip">Empaques ecológicos en León</div><div class="chip">Diseño de logos en Managua</div>
+      </div>
+      <div class="chips">
+        <div class="chip">Café orgánico en Matagalpa</div><div class="chip">Camisetas bordadas en Masaya</div>
+      </div>
+      <div class="link-ciudades">Explorar ciudades creativas →</div>
+      <div class="cities">
+        <span class="city-chip">📍 Managua</span><span class="city-chip">📍 León</span><span class="city-chip">📍 Granada</span><span class="city-chip">📍 Masaya</span><span class="city-chip">📍 Estelí</span><span class="city-chip">📍 Matagalpa</span><span class="city-chip">📍 Juigalpa</span><span class="city-chip">📍 Bluefields</span><span class="city-chip">📍 Nagarote</span><span class="city-chip">📍 San Juan de Oriente</span>
+      </div>
+    </div>
+    <div class="trust-panel">
+      <div class="title">Red local · decisiones con evidencia</div>
+      <div class="trust-h">Conexiones más claras desde la primera búsqueda.</div>
+      <div class="stat"><span class="v">50</span><span class="l">proveedores de demostración</span></div>
+      <div class="stat"><span class="v">10</span><span class="l">ciudades creativas activas</span></div>
+      <div class="stat"><span class="v">1</span><span class="l">flujo completo de confianza</span></div>
+      <div class="flow">
+        <div class="flow-step"><span class="flow-n">1</span>Solicitud dentro de la app</div>
+        <div class="flow-step"><span class="flow-n">2</span>Cotización y acuerdo en el chat</div>
+        <div class="flow-step"><span class="flow-n">3</span>Cierre bilateral → reseña con respaldo</div>
+      </div>
+    </div>
+  </div>
+  <div class="principles">
+    <div class="principle"><div class="t">Perfiles verificados</div><div class="d">Sabés qué datos confirmó la plataforma.</div></div>
+    <div class="principle"><div class="t">Reseñas con respaldo</div><div class="d">Solo después de un trabajo confirmado por ambas partes.</div></div>
+    <div class="principle"><div class="t">Solicitudes dentro de la app</div><div class="d">Todo queda registrado en el chat, sin contactos expuestos.</div></div>
+  </div>
+  <div class="footer"><span>MVP de demostración · Conecta Emprende AI</span><span>Hecho en Nicaragua</span></div>
+</section>
+<!-- SCREEN2 -->
+<section class="screen" id="s2">
+  <nav class="navbar">
+    <div class="nav-left">
+      <div class="logo"><div class="logo-mark">CE</div><div class="logo-name">Conecta Emprende</div></div>
+      <div class="nav-links"><span class="active">Buscar proveedores</span><span>Cómo funciona la confianza</span></div>
+    </div>
+    <div class="nav-actions"><div class="btn-outline">Ingresar</div><div class="btn-accent">Crear cuenta</div></div>
+  </nav>
+  <div class="search-wrap">
+    <div class="page-title">Buscar proveedores</div>
+    <div class="searchbar-ia"><span class="q">Necesito empaques ecológicos para un emprendimiento de café en León</span><div class="btn-accent">Buscar con IA</div></div>
+    <div class="inferred"><span class="lbl">Intención inferida:</span><span class="inf-chip">ciudad: León ×</span><span class="inf-chip">categoría: Empaques ecológicos ×</span></div>
+  </div>
+  <div class="results-main">
+    <aside class="filters">
+      <div class="f-title">Filtros</div>
+      <div><div class="g">Ciudad</div><div class="opt"><span class="box"></span>León</div><div class="opt"><span class="box"></span>Managua</div><div class="opt"><span class="box"></span>Masaya</div><div class="opt"><span class="box"></span>Matagalpa</div></div>
+      <div><div class="g">Precio</div><div class="opt"><span class="box"></span>Económico</div><div class="opt"><span class="box"></span>Intermedio</div><div class="opt"><span class="box"></span>Premium</div><div class="opt"><span class="box"></span>Negociable</div></div>
+      <div><div class="g">Confianza mínima</div><div class="slider"><span class="thumb"></span></div></div>
+    </aside>
+    <div class="results">
+      <div class="count">3 proveedores coinciden con tu búsqueda</div>
+      <article class="result-card">
+        <div class="r-top"><div class="avatar">CA</div><div class="r-titles"><div class="nm">Café & Pack NIC</div><div class="cat">Empaques ecológicos · León</div></div><div class="trust">Confianza 90</div></div>
+        <div class="desc">Bolsas kraft, fondos y sellos para emprendimientos de café.</div>
+        <div class="badges"><span class="b b-green">Disponible</span><span class="b b-blue">Verificado</span><span class="b b-amber">Intermedio</span></div>
+        <div class="why">Recomendado porque: coincide con León y tu categoría, con alta tasa de respuesta.</div>
+        <div class="cta"><span class="ct">Reseñas con respaldo · responde en ~2 h</span><div class="btn-accent">Solicitar cotización</div></div>
+      </article>
+      <article class="result-card">
+        <div class="r-top"><div class="avatar">EC</div><div class="r-titles"><div class="nm">EcoBolsa Nicaragua</div><div class="cat">Empaques ecológicos · Managua</div></div><div class="trust">Confianza 82</div></div>
+        <div class="desc">Bolsas reutilizables y cajas personalizadas con entrega en 48 h.</div>
+        <div class="badges"><span class="b b-green">Disponible</span><span class="b b-blue">Verificado</span><span class="b b-amber">Intermedio</span></div>
+        <div class="why">Recomendado porque: catálogo activo y reseñas con respaldo.</div>
+        <div class="cta"><span class="ct">Reseñas con respaldo · responde en ~2 h</span><div class="btn-accent">Solicitar cotización</div></div>
+      </article>
+      <article class="result-card">
+        <div class="r-top"><div class="avatar">GR</div><div class="r-titles"><div class="nm">Gráfica LaCreativa</div><div class="cat">Diseño e impresión · León</div></div><div class="trust">Confianza 75</div></div>
+        <div class="desc">Identidad, etiquetas y empaques impresos para marcas locales.</div>
+        <div class="badges"><span class="b b-green">Disponible</span><span class="b b-blue">Verificado</span><span class="b b-amber">Intermedio</span></div>
+        <div class="why">Recomendado porque: precio negociable y disponibilidad inmediata.</div>
+        <div class="cta"><span class="ct">Reseñas con respaldo · responde en ~2 h</span><div class="btn-accent">Solicitar cotización</div></div>
+      </article>
+    </div>
+    <aside class="map">
+      <div class="map-canvas"><span class="pin" style="left:60px;top:90px"></span><span class="pin" style="left:180px;top:150px"></span><span class="pin" style="left:120px;top:240px"></span><span class="pin" style="left:250px;top:60px"></span></div>
+      <div class="map-overlay">Mapa · sincronizado con la lista</div>
+    </aside>
+  </div>
+</section>
+<!-- SCREEN3 -->
+<section class="screen" id="s3">
+  <div class="cover"><div class="back">← Volver a resultados</div></div>
+  <div class="profile-head">
+    <div class="photo">CP</div>
+    <div class="p-titles">
+      <div class="p-cat">EMPAQUES ECOLÓGICOS · LEÓN</div>
+      <div class="p-nm">Café & Pack NIC</div>
+      <div class="p-tag">Bolsas kraft, fondos y sellos para emprendimientos de café.</div>
+    </div>
+    <div class="p-meta">
+      <div class="m">📍 León · Nicaragua</div>
+      <div class="m">⏱ Disponible · responde en ~2 h</div>
+      <div class="m">📦 Tiempo de entrega: 48–72 h</div>
+    </div>
+  </div>
+  <div class="badge-row">
+    <span class="badge badge-green">🛡 Confianza 90</span>
+    <span class="badge badge-blue">✔ Verificado</span>
+    <span class="badge badge-amber">★ Perfil comercial sólido</span>
+  </div>
+  <div class="p-main">
+    <div class="p-left">
+      <div class="tabs"><span class="tab on">Todos</span><span class="tab">Productos</span><span class="tab">Servicios</span><span class="tab">Paquetes</span><span class="tab">Portafolio</span></div>
+      <div class="offer"><div class="thumb">📦</div><div class="o-txt"><div class="o-row"><span class="o-nm">Bolsa kraft 1 kg</span><span class="o-type">Producto</span></div><div class="o-ds">Bolsa con válvula de desgasificado, ideal para café tostado.</div></div><div class="o-side"><span class="o-pr">C$ 18 / unidad</span><div class="o-btn">Consultar</div></div></div>
+      <div class="offer"><div class="thumb">📦</div><div class="o-txt"><div class="o-row"><span class="o-nm">Fondo kraft personalizado</span><span class="o-type">Producto</span></div><div class="o-ds">Impreso a 2 tintas con tu marca, entrega en 72 h.</div></div><div class="o-side"><span class="o-pr">C$ 240 / 100 u</span><div class="o-btn">Consultar</div></div></div>
+      <div class="offer"><div class="thumb">📦</div><div class="o-txt"><div class="o-row"><span class="o-nm">Kit emprendedor</span><span class="o-type">Paquete</span></div><div class="o-ds">120 bolsas + 200 sellos + asesoría de empaque.</div></div><div class="o-side"><span class="o-pr">C$ 850 / kit</span><div class="o-btn">Consultar</div></div></div>
+      <div class="rev-head"><span class="rt">Reseñas con respaldo (12)</span><span class="st">★</span><span class="st">★</span><span class="st">★</span><span class="st">★</span><span class="st">★</span></div>
+      <div class="review"><div class="r-h"><span class="w">Tostadora El Volcán</span><span class="s">5 ★</span></div><div class="r-tx">“Llegaron antes de la fecha y el sello quedó perfecto. Volví a pedir.”</div><div class="seal">✔ Trabajo confirmado por ambas partes</div></div>
+      <div class="review"><div class="r-h"><span class="w">Doña María — Repostería</span><span class="s">5 ★</span></div><div class="r-tx">“Me asesoraron para elegir el fondo correcto. Muy responsables.”</div><div class="seal">✔ Trabajo confirmado por ambas partes</div></div>
+    </div>
+    <aside class="p-side">
+      <div class="t-card">
+        <div class="t">Índice de confianza</div>
+        <div class="score"><span class="v">90</span><span class="of">/ 100</span></div>
+        <div class="m-row"><div class="l-h"><span>Verificación de identidad</span><span class="v">30</span></div><div class="bar"><div class="fill" style="width:100%"></div></div></div>
+        <div class="m-row"><div class="l-h"><span>Reseñas con respaldo</span><span class="v">25</span></div><div class="bar"><div class="fill" style="width:83%"></div></div></div>
+        <div class="m-row"><div class="l-h"><span>Antigüedad y actividad</span><span class="v">20</span></div><div class="bar"><div class="fill" style="width:67%"></div></div></div>
+        <div class="m-row"><div class="l-h"><span>Comunicación</span><span class="v">15</span></div><div class="bar"><div class="fill" style="width:50%"></div></div></div>
+      </div>
+      <div class="medals">
+        <div class="t">Medallas y señales</div>
+        <div class="m">🏅 Respondedor rápido (~2 h)</div>
+        <div class="m">🔥 3 meses activo seguido</div>
+        <div class="m">🤝 10 trabajos confirmados</div>
+      </div>
+      <div class="p-actions">
+        <div class="btn-p">Solicitar cotización</div>
+        <div class="btn-s">Guardar proveedor</div>
+        <div class="p-links"><span>Compartir (próximamente)</span><span class="rep">Reportar</span></div>
+      </div>
+    </aside>
+  </div>
+</section>
+</body></html>

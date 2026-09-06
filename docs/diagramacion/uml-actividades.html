@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>TradeArc · UML de actividades</title>
+<style>
+  :root{--bg:#0f1115;--panel:#171a21;--line:#262b36;--txt:#e7eaf0;--muted:#9aa3b2;--accent:#2f9e73}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--txt);font:15px/1.55 "Segoe UI",system-ui,-apple-system,sans-serif}
+  header{padding:22px 28px 16px;border-bottom:1px solid var(--line)}
+  h1{margin:0 0 4px;font-size:21px;font-weight:650}
+  .sub{color:var(--muted);font-size:13.5px}
+  .sub code{background:#1d2129;padding:1px 6px;border-radius:4px;font-size:12.5px}
+  .back{color:#6cf;text-decoration:none;font-size:13px}
+  nav{display:flex;flex-wrap:wrap;gap:8px;padding:16px 28px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--bg);z-index:10}
+  button{font:inherit;font-size:13.5px;cursor:pointer;border-radius:7px;border:1px solid var(--line);background:var(--panel);color:var(--txt);padding:7px 13px}
+  button:hover{border-color:#3a4150}
+  button.tab.active{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+  .tools{margin-left:auto;display:flex;gap:8px;align-items:center}
+  .zoom{display:inline-flex;align-items:center;gap:6px;color:var(--muted);font-size:13px}
+  main{padding:20px 28px 60px}
+  .meta{color:var(--muted);font-size:13px;margin:0 0 14px;max-width:120ch}
+  .meta b{color:var(--txt);font-weight:600}
+  #stage{background:#fbfcfd;border:1px solid var(--line);border-radius:10px;padding:18px;overflow:auto;min-height:60vh}
+  #stage svg{max-width:none;height:auto}
+  .legend{display:flex;flex-wrap:wrap;gap:18px;margin:16px 0 0;padding:14px 16px;background:var(--panel);border:1px solid var(--line);border-radius:10px;font-size:13px;color:var(--muted)}
+  .legend code{color:var(--txt);background:#1d2129;padding:1px 6px;border-radius:4px}
+  .err{background:#2a1618;border:1px solid #5b2a2f;color:#ffb4b4;padding:14px;border-radius:8px;white-space:pre-wrap;font-family:Consolas,monospace;font-size:13px}
+</style>
+</head>
+<body>
+<header>
+  <h1>TradeArc · Diagrama UML de actividades</h1>
+  <div class="sub">
+    Flujos con calles por actor, derivados de <code>quotes-service.ts</code>, <code>reviewRules.ts</code> y <code>resolve-expired-quotes.ts</code> ·
+    <a class="back" href="./">volver al portal</a>
+  </div>
+</header>
+
+<nav>
+  <button class="tab active" data-d="ciclo">Ciclo de vida de la solicitud</button>
+  <button class="tab" data-d="estados">Máquina de estados de 3 ejes</button>
+  <button class="tab" data-d="expiracion">Vencimiento automático 72 h</button>
+  <button class="tab" data-d="resena">Reseña y recálculo de confianza</button>
+  <button class="tab" data-d="onboarding">Alta y publicación de perfil</button>
+  <div class="tools">
+    <span class="zoom"><button id="out">&minus;</button><span id="lvl">100%</span><button id="in">+</button></span>
+    <button id="svg">SVG</button>
+    <button id="png">PNG</button>
+  </div>
+</nav>
+
+<main>
+  <p class="meta" id="meta"></p>
+  <div id="stage">Renderizando…</div>
+  <div class="legend">
+    <div>Cada <code>subgraph</code> es una calle de actor</div>
+    <div><code>◇</code> nodo de decisión</div>
+    <div><code>●</code> inicio y fin</div>
+    <div>Eventos del ledger en <code>MAYUSCULAS</code></div>
+  </div>
+</main>
+
+<script type="text/plain" id="src-ciclo">
+flowchart TB
+    classDef inicio fill:#2f9e73,stroke:#1d6b4d,color:#fff
+    classDef fin fill:#c0504d,stroke:#8a2f2c,color:#fff
+    classDef accion fill:#eaf2fd,stroke:#3b6ea8,color:#12263f
+    classDef decision fill:#fff4e6,stroke:#c98a2e,color:#3d2a09
+    classDef evento fill:#eefaf3,stroke:#2f9e73,color:#0f2f22
+
+    INI(("Inicio")):::inicio
+
+    subgraph CLI["Calle · Cliente solicitante"]
+        A1["Buscar proveedor y abrir su perfil"]:::accion
+        A2["Crear solicitud de cotizacion"]:::accion
+        A3["Leer la cotizacion recibida"]:::accion
+        A4["Aceptar el precio propuesto"]:::accion
+        A5["Solicitar el cierre del trabajo"]:::accion
+        A6["Confirmar el cierre propuesto"]:::accion
+        A7["Rechazar el cierre propuesto"]:::accion
+    end
+
+    subgraph PRO["Calle · Proveedor"]
+        B1["Recibir la solicitud"]:::accion
+        B2["Responder con mensaje"]:::accion
+        B3["Enviar o actualizar cotizacion"]:::accion
+        B4["Declinar sin interaccion previa"]:::accion
+        B5["Solicitar el cierre del trabajo"]:::accion
+        B6["Confirmar el cierre propuesto"]:::accion
+    end
+
+    subgraph SIS["Calle · Sistema"]
+        C1["Validar que el proveedor puede recibir solicitudes"]:::accion
+        C2["Emitir REQUEST_CREATED"]:::evento
+        C3["Emitir PROVIDER_RESPONDED"]:::evento
+        C4["Apilar cotizacion en historial append only"]:::accion
+        C5["Emitir QUOTE_ACCEPTED"]:::evento
+        C6["Abrir ventana de 72 horas con reloj de base de datos"]:::accion
+        C7["Emitir COMPLETION_REQUESTED"]:::evento
+        C8["Emitir COMPLETION_CONFIRMED"]:::evento
+        C9["Registrar evidencia BILATERAL_COMPLETION peso 1.0"]:::evento
+        C10["Emitir COMPLETION_NOT_ACCEPTED y reabrir"]:::evento
+        C11["Emitir REQUEST_DECLINED"]:::evento
+    end
+
+    D1{"El proveedor esta ACTIVE"}:::decision
+    D2{"Es su primer mensaje"}:::decision
+    D3{"Hubo interaccion previa"}:::decision
+    D4{"La contraparte ya confirmo"}:::decision
+    D5{"Quien responde al cierre"}:::decision
+    D6{"Pasaron 24 h y hay mensaje nuevo"}:::decision
+
+    FIN_OK(("Cerrado bilateral")):::fin
+    FIN_DEC(("Cerrado por declinacion")):::fin
+
+    INI --> A1 --> A2 --> C1 --> D1
+    D1 -->|"no, 403 con motivo"| A1
+    D1 -->|"si"| C2 --> B1
+    B1 --> D3
+    D3 -->|"no, aun sin responder"| B4 --> C11 --> FIN_DEC
+    D3 -->|"si, decide atender"| B2 --> D2
+    D2 -->|"si"| C3 --> B3
+    D2 -->|"no"| B3
+    B3 --> C4 --> A3 --> A4 --> C5
+
+    C5 --> A5
+    C5 --> B5
+    A5 --> C6
+    B5 --> C6
+    C6 --> C7 --> D4
+    D4 -->|"si"| C8 --> C9 --> FIN_OK
+    D4 -->|"no, queda pendiente"| D5
+    D5 -->|"confirma"| A6 --> C8
+    D5 -->|"confirma"| B6 --> C8
+    D5 -->|"rechaza"| D6
+    D6 -->|"no, bloqueado por cooldown"| D5
+    D6 -->|"si"| A7 --> C10 --> B2
+</script>
+
+<script type="text/plain" id="src-estados">
+stateDiagram-v2
+    direction TB
+
+    [*] --> OPEN : REQUEST_CREATED
+
+    state "OPEN, solicitud activa" as OPEN
+    state "COMPLETION_PENDING, esperando contraparte" as PENDING
+    state "CLOSED, cerrada definitivamente" as CLOSED
+
+    OPEN --> PENDING : COMPLETION_REQUESTED, abre ventana 72 h
+    PENDING --> OPEN : COMPLETION_NOT_ACCEPTED, rechazo con cooldown 24 h
+    PENDING --> OPEN : COMPLETION_REQUEST_WITHDRAWN, retiro del iniciador
+    PENDING --> CLOSED : COMPLETION_CONFIRMED, ambas partes
+    PENDING --> CLOSED : COMPLETION_TIMEOUT, vence la ventana
+    OPEN --> CLOSED : REQUEST_DECLINED, sin interaccion previa
+    OPEN --> CLOSED : cancelacion explicita
+
+    state CLOSED {
+        direction TB
+        state "BILATERAL, peso 1.0" as B
+        state "REQUESTER_CONFIRMED_PROVIDER_NO_RESPONSE, peso 0.5" as RC
+        state "PROVIDER_CLAIMED_REQUESTER_NO_RESPONSE, sin resena" as PC
+        state "CANCELLED_BY_PROVIDER_AFTER_ENGAGEMENT, peso 0.5" as CAE
+        state "CANCELLED_BY_PROVIDER, sin resena" as CP
+        state "DECLINED_BY_PROVIDER, sin resena" as DP
+    }
+
+    CLOSED --> [*]
+
+    note right of PENDING
+        Subestado implicito
+        una sola confirmacion mas
+        completionDeadline activo
+        y completionInitiatorUserId fijado
+    end note
+
+    note right of CLOSED
+        El eje moderation_state
+        CLEAN, FLAGGED, RESTRICTED
+        es ortogonal y no bloquea
+        ninguna transicion
+    end note
+</script>
+
+<script type="text/plain" id="src-expiracion">
+flowchart TB
+    classDef inicio fill:#2f9e73,stroke:#1d6b4d,color:#fff
+    classDef fin fill:#c0504d,stroke:#8a2f2c,color:#fff
+    classDef accion fill:#eaf2fd,stroke:#3b6ea8,color:#12263f
+    classDef decision fill:#fff4e6,stroke:#c98a2e,color:#3d2a09
+    classDef evento fill:#eefaf3,stroke:#2f9e73,color:#0f2f22
+
+    INI(("Cada 10 minutos, node-cron")):::inicio
+
+    subgraph JOB["Calle · Job programado"]
+        J1["Buscar hilos en COMPLETION_PENDING con completionDeadline vencido"]:::accion
+        J2["Tomar el siguiente hilo del lote"]:::accion
+        J3["Escribir con bloqueo optimista por version"]:::accion
+        J4["Registrar conflicto y saltar el hilo"]:::accion
+    end
+
+    subgraph LAZY["Calle · Resolucion perezosa"]
+        L1["Alguien abre o intenta cerrar la solicitud"]:::accion
+        L2["resolveTimeoutInline aplica la misma tabla de decision"]:::accion
+    end
+
+    subgraph DEC["Calle · Reglas de desenlace"]
+        D1{"Que confirmaciones existen al vencer"}:::decision
+        R1["closure_outcome BILATERAL"]:::accion
+        R2["closure_outcome REQUESTER_CONFIRMED_PROVIDER_NO_RESPONSE"]:::accion
+        R3["closure_outcome PROVIDER_CLAIMED_REQUESTER_NO_RESPONSE"]:::accion
+        R4["Estado inconsistente, cierre defensivo con aviso en log"]:::accion
+    end
+
+    subgraph EF["Calle · Efectos"]
+        E1["Emitir COMPLETION_TIMEOUT con metadata del desenlace"]:::evento
+        E2["Crear evidencia BILATERAL_COMPLETION peso 1.0"]:::evento
+        E3["Recalcular confianza del proveedor"]:::accion
+        E4["Analizar riesgo del proveedor"]:::accion
+    end
+
+    D2{"El cierre fue bilateral"}:::decision
+    D3{"Quedan hilos en el lote"}:::decision
+    FIN(("Lote resuelto")):::fin
+
+    INI --> J1 --> J2 --> D1
+    L1 --> L2 --> D1
+    D1 -->|"ambas"| R1
+    D1 -->|"solo cliente"| R2
+    D1 -->|"solo proveedor"| R3
+    D1 -->|"ninguna"| R4
+    R1 --> J3
+    R2 --> J3
+    R3 --> J3
+    R4 --> J3
+    J3 -->|"conflicto de version"| J4 --> D3
+    J3 -->|"escritura correcta"| E1 --> D2
+    D2 -->|"si"| E2 --> E3 --> E4 --> D3
+    D2 -->|"no"| D3
+    D3 -->|"si"| J2
+    D3 -->|"no"| FIN
+</script>
+
+<script type="text/plain" id="src-resena">
+flowchart TB
+    classDef inicio fill:#2f9e73,stroke:#1d6b4d,color:#fff
+    classDef fin fill:#c0504d,stroke:#8a2f2c,color:#fff
+    classDef accion fill:#eaf2fd,stroke:#3b6ea8,color:#12263f
+    classDef decision fill:#fff4e6,stroke:#c98a2e,color:#3d2a09
+    classDef evento fill:#eefaf3,stroke:#2f9e73,color:#0f2f22
+    classDef bloqueo fill:#fdecec,stroke:#c0504d,color:#4a1210
+
+    INI(("La solicitud quedo cerrada")):::inicio
+
+    subgraph CLI["Calle · Cliente solicitante"]
+        A1["Consultar si puede resenar"]:::accion
+        A2["Puntuar los 5 ejes y escribir comentario"]:::accion
+        A3["Editar la resena dentro de 7 dias"]:::accion
+    end
+
+    subgraph DOM["Calle · Reglas de dominio"]
+        D0{"Es el solicitante del hilo"}:::decision
+        D1{"El hilo esta CLOSED"}:::decision
+        D2{"Ya existe una resena suya"}:::decision
+        D3{"El desenlace fue BILATERAL"}:::decision
+        D4{"El desenlace admite via unilateral"}:::decision
+        D5{"Hay evidencia de interaccion comercial"}:::decision
+        P1["Ruta BILATERAL, peso 1.0"]:::accion
+        P2["Ruta UNILATERAL_QUALIFIED, peso 0.5"]:::accion
+        X1["Bloqueado, solo el solicitante puede resenar"]:::bloqueo
+        X2["Bloqueado, la solicitud no esta cerrada"]:::bloqueo
+        X3["Bloqueado, resena duplicada"]:::bloqueo
+        X4["Bloqueado, el desenlace no admite resena"]:::bloqueo
+        X5["Bloqueado, no hubo interaccion antes de cancelar"]:::bloqueo
+    end
+
+    subgraph SIS["Calle · Sistema"]
+        S1["Guardar Review con su peso en transaccion"]:::accion
+        S2["Generar ReviewAnalysis con sentimiento y senales"]:::accion
+        S3["Crear ReputationEvent segun la via"]:::evento
+        S4["Actualizar avgRating y totalVerifiedReviews"]:::accion
+        S5["Recalcular confianza filtrando requesters no elegibles"]:::accion
+        S6["Aplicar topes por moderacion y freno por riesgo"]:::accion
+        S7["Guardar TrustScoreSnapshot auditable"]:::accion
+        S8["Copiar version previa a ReviewHistory"]:::accion
+        S9["Actualizar la evidencia asociada"]:::evento
+    end
+
+    FIN(("Confianza publica actualizada")):::fin
+    FINB(("Accion rechazada con mensaje claro")):::fin
+
+    INI --> A1 --> D0
+    D0 -->|"no"| X1 --> FINB
+    D0 -->|"si"| D1
+    D1 -->|"no"| X2 --> FINB
+    D1 -->|"si"| D2
+    D2 -->|"si"| X3 --> FINB
+    D2 -->|"no"| D3
+    D3 -->|"si"| P1
+    D3 -->|"no"| D4
+    D4 -->|"no"| X4 --> FINB
+    D4 -->|"si"| D5
+    D5 -->|"no"| X5 --> FINB
+    D5 -->|"si"| P2
+    P1 --> A2
+    P2 --> A2
+    A2 --> S1 --> S2 --> S3 --> S4 --> S5 --> S6 --> S7 --> FIN
+    A3 --> S8 --> S9 --> S5
+</script>
+
+<script type="text/plain" id="src-onboarding">
+flowchart TB
+    classDef inicio fill:#2f9e73,stroke:#1d6b4d,color:#fff
+    classDef fin fill:#c0504d,stroke:#8a2f2c,color:#fff
+    classDef accion fill:#eaf2fd,stroke:#3b6ea8,color:#12263f
+    classDef decision fill:#fff4e6,stroke:#c98a2e,color:#3d2a09
+    classDef evento fill:#eefaf3,stroke:#2f9e73,color:#0f2f22
+    classDef bloqueo fill:#fdecec,stroke:#c0504d,color:#4a1210
+
+    INI(("Persona con cuenta creada")):::inicio
+
+    subgraph USR["Calle · Persona emprendedora"]
+        A1["Completar datos del negocio"]:::accion
+        A2["Pedir mejora de biografia con IA"]:::accion
+        A3["Revisar y aprobar el texto sugerido"]:::accion
+        A4["Cargar al menos un item de catalogo"]:::accion
+        A5["Solicitar publicacion del perfil"]:::accion
+        A6["Corregir lo que falta"]:::accion
+    end
+
+    subgraph SIS["Calle · Sistema"]
+        S1["Crear Provider en estado DRAFT"]:::accion
+        S2["Promover la cuenta al rol PROVIDER"]:::evento
+        S3["Inicializar metricas con confianza base"]:::accion
+        S4["Validar requisitos de publicacion"]:::accion
+        S5["Cambiar estado a ACTIVE y fijar activatedAt"]:::accion
+        S6["Registrar PROVIDER_PUBLISHED en bitacora"]:::evento
+    end
+
+    subgraph IA["Calle · Gemini"]
+        G1["Redactar biografia sugerida"]:::accion
+    end
+
+    D1{"Descripcion corta con 10 caracteres o mas"}:::decision
+    D2{"Descripcion larga con 40 caracteres o mas"}:::decision
+    D3{"Tiene un item DISPONIBLE"}:::decision
+    X1["Publicacion bloqueada con motivo explicito"]:::bloqueo
+    FIN(("Perfil visible en el directorio")):::fin
+
+    INI --> A1 --> S1 --> S2 --> S3
+    S3 --> A2 --> G1 --> A3 --> A4 --> A5 --> S4
+    S4 --> D1
+    D1 -->|"no"| X1
+    D1 -->|"si"| D2
+    D2 -->|"no"| X1
+    D2 -->|"si"| D3
+    D3 -->|"no"| X1
+    D3 -->|"si"| S5 --> S6 --> FIN
+    X1 --> A6 --> A5
+</script>
+
+<script type="module">
+import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+mermaid.initialize({startOnLoad:false,theme:'base',themeVariables:{primaryColor:'#eef4ff',primaryBorderColor:'#3b6ea8',primaryTextColor:'#12263f',lineColor:'#5b6b80',fontSize:'13px',fontFamily:'Segoe UI, system-ui, sans-serif'},flowchart:{useMaxWidth:false,htmlLabels:true,nodeSpacing:40,rankSpacing:55},state:{useMaxWidth:false}});
+
+const META = {
+  ciclo: 'Flujo completo de una solicitud con calles por actor. El punto clave es que el cierre necesita <b>dos confirmaciones</b>: quien pide el cierre abre una ventana de 72 horas y la contraparte puede confirmar, rechazar o dejar vencer. El rechazo reabre la solicitud, pero exige <b>24 horas de espera y al menos un mensaje nuevo</b> para evitar bloqueos en bucle.',
+  estados: 'Los tres ejes del modelo. <b>workflow_phase</b> es el unico con ciclo de vida y es reversible; <b>closure_outcome</b> solo se puebla al cerrar y determina si la resena es posible y con que peso; <b>moderation_state</b> es ortogonal. Esta separacion es la que permite responder no solo si termino, sino como termino.',
+  expiracion: 'El vencimiento se resuelve por dos caminos que comparten la misma tabla de decision: el cron cada 10 minutos y la resolucion perezosa cuando alguien toca la solicitud. Ambos usan <b>bloqueo optimista por version</b>, asi que si los dos coinciden uno pierde la carrera de forma segura y salta el hilo sin duplicar efectos.',
+  resena: 'La elegibilidad se evalua en orden estricto y cada bloqueo devuelve un mensaje entendible en lugar de un error generico. Solo el cierre bilateral da peso <b>1.0</b>; las vias unilaterales validas dan <b>0.5</b> y exigen evidencia real de interaccion comercial.',
+  onboarding: 'Alta del negocio. El perfil nace en <b>DRAFT</b> y no es visible hasta cumplir tres requisitos verificables. La IA solo sugiere texto: la persona revisa y aprueba antes de guardar, de modo que no se publica contenido automatico sin control humano.'
+};
+
+const stage=document.getElementById('stage'),meta=document.getElementById('meta'),lvl=document.getElementById('lvl');
+let current='ciclo',zoom=1;
+function applyZoom(){const s=stage.querySelector('svg');if(!s)return;s.style.transformOrigin='0 0';s.style.transform=`scale(${zoom})`;lvl.textContent=Math.round(zoom*100)+'%';}
+async function draw(k){current=k;meta.innerHTML=META[k]||'';const code=document.getElementById('src-'+k).textContent.trim();stage.textContent='Renderizando…';
+ try{const{svg}=await mermaid.render('g-'+k+'-'+Date.now(),code);stage.innerHTML=svg;zoom=1;applyZoom();}
+ catch(e){stage.innerHTML='<div class="err">No se pudo renderizar.\n\n'+String(e&&e.message?e.message:e).replace(/[<>&]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]))+'\n\nMermaid se carga desde CDN, revisa la conexion.</div>';}}
+document.querySelectorAll('.tab').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));b.classList.add('active');draw(b.dataset.d);}));
+document.getElementById('in').onclick=()=>{zoom=Math.min(zoom+0.15,3);applyZoom();};
+document.getElementById('out').onclick=()=>{zoom=Math.max(zoom-0.15,0.3);applyZoom();};
+function svgStr(){const s=stage.querySelector('svg');if(!s)return null;const c=s.cloneNode(true);c.style.transform='';c.setAttribute('xmlns','http://www.w3.org/2000/svg');return new XMLSerializer().serializeToString(c);}
+document.getElementById('svg').onclick=()=>{const s=svgStr();if(!s)return;const u=URL.createObjectURL(new Blob([s],{type:'image/svg+xml'}));const a=document.createElement('a');a.href=u;a.download='tradearc-actividades-'+current+'.svg';a.click();URL.revokeObjectURL(u);};
+document.getElementById('png').onclick=()=>{const el=stage.querySelector('svg'),s=svgStr();if(!s||!el)return;const b=el.getBoundingClientRect(),k=2;
+ const w=Math.ceil((el.viewBox.baseVal.width||b.width/zoom)*k),h=Math.ceil((el.viewBox.baseVal.height||b.height/zoom)*k);
+ const img=new Image();img.onload=()=>{const c=document.createElement('canvas');c.width=w;c.height=h;const x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,w,h);x.drawImage(img,0,0,w,h);const a=document.createElement('a');a.href=c.toDataURL('image/png');a.download='tradearc-actividades-'+current+'.png';a.click();};
+ img.src='data:image/svg+xml;base64,'+btoa(unescape(encodeURIComponent(s)));};
+draw('ciclo');
+</script>
+</body>
+</html>
