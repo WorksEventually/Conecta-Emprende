@@ -1563,6 +1563,19 @@ async function startServer() {
     reviewedBy: { select: { id: true, name: true, email: true } },
     escalatedBy: { select: { id: true, name: true, email: true } },
     resolvedBy: { select: { id: true, name: true, email: true } },
+    signalEvidence: {
+      select: {
+        id: true,
+        signalKey: true,
+        observedValue: true,
+        threshold: true,
+        contribution: true,
+        windowStart: true,
+        windowEnd: true,
+        algorithmVersion: true,
+      },
+      orderBy: { createdAt: "desc" },
+    },
   } as const;
 
   function toRiskReportDto(report: any) {
@@ -1582,6 +1595,7 @@ async function startServer() {
         newAccountsPercentage: report.newAccountsPercentage,
         ratingConcentrationScore: report.ratingConcentrationScore,
       },
+      signalEvidence: report.signalEvidence,
       status: report.status,
       reviewerNotes: report.reviewerNotes,
       recommendedAction: report.recommendedAction,

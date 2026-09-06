@@ -51,7 +51,7 @@ export async function extractProviderMetrics(providerId: string): Promise<RiskSc
   const synchronizedCompletionScore = calculateSynchronizedCompletions(threads);
   const reviewBurstScore = calculateReviewBurst(reviews);
   const accountClusterScore = calculateAccountCluster(threads);
-  const profileRecreationScore = null;
+  const profileRecreationScore = await calculateProfileRecreation(providerId);
   const actionVolumeScore = calculateActionVolume(threads, reviews);
 
   return {
@@ -226,6 +226,23 @@ function calculateActionVolume(threads: any[], reviews: any[]): number | null {
   const standardDeviation = Math.sqrt(variance);
   const regularityBonus = standardDeviation <= 1000 ? 25 : 0;
   return Math.min(50 + Math.min((recent.length - 80) / 80 * 25, 25) + regularityBonus, 100);
+}
+
+async function calculateProfileRecreation(providerId: string): Promise<number | null> {
+  const provider = await prisma.provider.findUnique({
+    where: { id: providerId },
+    select: { userId: true },
+  });
+  if (!provider) return null;
+
+  const profiles = await prisma.provider.findMany({
+    where: { userId: provider.userId },
+    select: { status: true },
+  });
+  if (profiles.length < 2) return 0;
+
+  const bannedProfiles = profiles.filter((profile) => profile.status === "BANNED").length;
+  return bannedProfiles > 0 ? Math.min((bannedProfiles / (profiles.length - 1)) * 100, 100) : 0;
 }
 
 export async function analyzeProviderRisk(providerId: string): Promise<void> {

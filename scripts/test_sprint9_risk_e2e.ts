@@ -77,6 +77,7 @@ async function main() {
     assert.equal("messages" in dto, false);
     assert.equal("chat" in dto, false);
     assert.equal("phone" in dto, false);
+    assert.ok(Array.isArray(dto.signalEvidence));
 
     const holdMetrics = await prisma.providerMetrics.findUnique({ where: { providerId: provider.id } });
     assert.equal(holdMetrics?.growthHold ?? false, false);

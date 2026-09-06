@@ -49,6 +49,16 @@ export interface AdminRiskReport {
     newAccountsPercentage: number | null;
     ratingConcentrationScore: number | null;
   };
+  signalEvidence: Array<{
+    id: string;
+    signalKey: string;
+    observedValue: number | null;
+    threshold: number | null;
+    contribution: number;
+    windowStart: string;
+    windowEnd: string;
+    algorithmVersion: string;
+  }>;
   status: AdminRiskReportStatus;
   reviewerNotes: string | null;
   recommendedAction: string | null;
