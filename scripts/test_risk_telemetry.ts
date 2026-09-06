@@ -8,7 +8,7 @@
  *   npm run test:risk-telemetry
  */
 import assert from "node:assert/strict";
-import { calculateRiskScore, classifyRiskScore, riskPenaltyForLevel } from "../src/domain/risk/calculateRiskScore";
+import { calculateRiskScore, classifyRiskScore, riskPenaltyForLevel, RISK_SIGNAL_CATALOG } from "../src/domain/risk/calculateRiskScore";
 
 console.log("→ Ejecutando tests de Risk Telemetry...\n");
 
@@ -174,6 +174,11 @@ assert.equal(riskPenaltyForLevel("suspicious"), 20);
 assert.equal(riskPenaltyForLevel("high-risk"), 40);
 console.log("✓ Tests 10-15: bandas 30/31/50/51/69/70/100 y penalización 0/10/20/40");
 
+assert.equal(RISK_SIGNAL_CATALOG.length, 11, "T17: La matriz canónica debe tener 11 señales");
+assert.equal(RISK_SIGNAL_CATALOG.find((signal) => signal.key === "FAST_SEARCH")?.source.includes("no disponible"), true);
+assert.ok(RISK_SIGNAL_CATALOG.every((signal) => signal.confirmationRequired), "T17: Toda señal requiere confirmación humana");
+console.log("✓ Test 17: matriz canónica de 11 señales con fuente no disponible explícita");
+
 const additionalSignals = calculateRiskScore({
   avgSearchTimeSeconds: null,
   avgRequestToCompletionMinutes: null,
@@ -192,4 +197,4 @@ assert.ok(additionalSignals.score >= 70, "T16: Las señales adicionales deben po
 assert.equal(additionalSignals.level, "high-risk");
 console.log("✓ Test 16: contrato de 11 señales adicionales tipado y puntuable");
 
-console.log("\n✅ Todos los tests de Risk Telemetry pasaron (16 casos)");
+console.log("\n✅ Todos los tests de Risk Telemetry pasaron (17 casos)");

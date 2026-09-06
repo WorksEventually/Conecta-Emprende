@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { PrismaClient, Availability, LegacyCity } from "@prisma/client";
 import { recalculateProviderTrustScore } from "../src/lib/trust-score-service";
+import bcrypt from "bcryptjs";
 
 const prisma = new PrismaClient();
 const BASE_URL = process.env.API_URL ?? "http://localhost:3000";
@@ -41,6 +42,17 @@ async function main() {
   const admin = await login("admin@conecta.test");
   const superAdmin = await login("superadmin@conecta.test");
   const providerUser = await login("textil@conecta.test");
+  const secondSuperEmail = `${PREFIX}superadmin@conecta.test`;
+  const secondSuper = await prisma.user.create({
+    data: {
+      email: secondSuperEmail,
+      name: "Sprint 9 Second Super Admin",
+      role: "SUPER_ADMIN",
+      password: await bcrypt.hash(PASSWORD, 10),
+      emailVerified: new Date(),
+    },
+  });
+  const secondSuperSession = await login(secondSuperEmail);
   const provider = await prisma.provider.create({
     data: {
       userId: providerUser.userId,
@@ -53,10 +65,13 @@ async function main() {
       shortDescription: "Proveedor temporal Sprint 9",
       availability: Availability.DISPONIBLE,
       status: "ACTIVE",
+      riskLineageRootId: undefined,
     },
   });
+  await prisma.provider.update({ where: { id: provider.id }, data: { riskLineageRootId: provider.id } });
 
-  let approvalId: string | null = null;
+  const approvalIds: string[] = [];
+  let relatedProviderSlug: string | null = null;
   try {
     const report = await prisma.riskReport.create({
       data: {
@@ -83,6 +98,7 @@ async function main() {
     assert.equal("chat" in dto, false);
     assert.equal("phone" in dto, false);
     assert.ok(Array.isArray(dto.signalEvidence));
+    assert.equal("sourceEventIds" in (dto.signalEvidence[0] ?? {}), false);
 
     const dismissed = await request(`/api/admin/risk-reports/${report.id}/status`, admin.cookie, {
       method: "PATCH",
@@ -97,10 +113,11 @@ async function main() {
 
     const approvalRequest = await request(`/api/admin/providers/${provider.id}/moderation-approvals`, admin.cookie, {
       method: "POST",
-      body: JSON.stringify({ action: "SUSPEND", reason: "Señal confirmada para prueba Sprint 9" }),
+      body: JSON.stringify({ action: "SUSPEND", reason: "Señal confirmada para prueba Sprint 9", riskReportId: report.id }),
     });
     assert.equal(approvalRequest.response.status, 202);
-    approvalId = approvalRequest.body.data.id;
+    const approvalId = approvalRequest.body.data.id as string;
+    approvalIds.push(approvalId);
 
     const selfApproval = await request(`/api/admin/moderation-approvals/${approvalId}/approve`, admin.cookie, {
       method: "POST",
@@ -115,13 +132,76 @@ async function main() {
     assert.equal(approved.response.status, 200);
     const updatedProvider = await prisma.provider.findUnique({ where: { id: provider.id } });
     assert.equal(updatedProvider?.status, "SUSPENDED");
+    const resolvedReport = await prisma.riskReport.findUnique({ where: { id: report.id } });
+    assert.equal(resolvedReport?.status, "ACTION_TAKEN");
+    assert.equal(await prisma.reputationEvent.count({ where: { riskReportId: report.id } }), 1);
+    const snapshotsAfterAction = await prisma.trustScoreSnapshot.count({ where: { providerId: provider.id } });
+    await request(`/api/admin/risk-reports/${report.id}/status`, superAdmin.cookie, {
+      method: "PATCH",
+      body: JSON.stringify({ status: "ACTION_TAKEN", reason: "Intento duplicado Sprint 9" }),
+    }).then((duplicate) => assert.equal(duplicate.response.status, 409));
+    assert.equal(await prisma.reputationEvent.count({ where: { riskReportId: report.id } }), 1);
+    assert.equal(await prisma.trustScoreSnapshot.count({ where: { providerId: provider.id } }), snapshotsAfterAction);
+
+    await prisma.provider.update({ where: { id: provider.id }, data: { status: "ACTIVE" } });
+    const expiredRequest = await request(`/api/admin/providers/${provider.id}/moderation-approvals`, admin.cookie, {
+      method: "POST",
+      body: JSON.stringify({ action: "SUSPEND", reason: "Solicitud expirada Sprint 9" }),
+    });
+    assert.equal(expiredRequest.response.status, 202);
+    const expiredApprovalId = expiredRequest.body.data.id as string;
+    approvalIds.push(expiredApprovalId);
+    await prisma.moderationActionApproval.update({
+      where: { id: expiredApprovalId },
+      data: { expiresAt: new Date(Date.now() - 1_000) },
+    });
+    const expired = await request(`/api/admin/moderation-approvals/${expiredApprovalId}/approve`, superAdmin.cookie, {
+      method: "POST",
+      body: JSON.stringify({}),
+    });
+    assert.equal(expired.response.status, 409);
+    assert.equal((await prisma.moderationActionApproval.findUnique({ where: { id: expiredApprovalId } }))?.status, "EXPIRED");
+
+    const concurrentRequest = await request(`/api/admin/providers/${provider.id}/moderation-approvals`, admin.cookie, {
+      method: "POST",
+      body: JSON.stringify({ action: "SUSPEND", reason: "Solicitud concurrente Sprint 9" }),
+    });
+    assert.equal(concurrentRequest.response.status, 202);
+    const concurrentApprovalId = concurrentRequest.body.data.id as string;
+    approvalIds.push(concurrentApprovalId);
+    const concurrent = await Promise.all([
+      request(`/api/admin/moderation-approvals/${concurrentApprovalId}/approve`, superAdmin.cookie, { method: "POST", body: JSON.stringify({}) }),
+      request(`/api/admin/moderation-approvals/${concurrentApprovalId}/approve`, secondSuperSession.cookie, { method: "POST", body: JSON.stringify({}) }),
+    ]);
+    assert.equal(concurrent.filter((result) => result.response.status === 200).length, 1);
+    assert.equal(concurrent.filter((result) => result.response.status === 409).length, 1);
+
+    relatedProviderSlug = `${PREFIX}related-provider`;
+    const relatedProvider = await prisma.provider.create({
+      data: {
+        userId: providerUser.userId,
+        displayName: "Sprint 9 Related Provider",
+        slug: relatedProviderSlug,
+        city: LegacyCity.MANAGUA,
+        category: "Marketing Digital",
+        mainCategory: "Marketing Digital",
+        aboutDescription: "Perfil relacionado para validar linaje persistente de riesgo.",
+        status: "ACTIVE",
+        riskLineageRootId: provider.id,
+      },
+    });
+    await prisma.provider.update({ where: { id: provider.id }, data: { status: "BANNED" } });
+    const { extractProviderMetrics } = await import("../src/lib/risk-telemetry-service");
+    assert.equal((await extractProviderMetrics(relatedProvider.id)).profileRecreationScore, 100);
 
     console.log("SPRINT9_RISK_E2E_OK");
   } finally {
-    if (approvalId) await prisma.moderationActionApproval.deleteMany({ where: { id: approvalId } });
+    await prisma.moderationActionApproval.deleteMany({ where: { id: { in: approvalIds } } });
+    if (relatedProviderSlug) await prisma.provider.deleteMany({ where: { slug: relatedProviderSlug } });
     await prisma.riskReport.deleteMany({ where: { providerId: provider.id } });
     await prisma.providerMetrics.deleteMany({ where: { providerId: provider.id } });
     await prisma.provider.delete({ where: { id: provider.id } });
+    await prisma.user.delete({ where: { id: secondSuper.id } });
     await prisma.$disconnect();
   }
 }

@@ -226,6 +226,13 @@ async function main() {
         body: "Solo un mensaje",
       },
     });
+    await prisma.requestEvent.create({
+      data: {
+        requestId: thread.id,
+        eventType: "COMPLETION_CONFIRMED",
+        idempotencyKey: `risk-integration-completion-${thread.id}`,
+      },
+    });
   }
 
   await analyzeProviderRisk(providerId);
@@ -238,6 +245,12 @@ async function main() {
   check("Thread sospechoso genera RiskReport", Boolean(reportAfterSuspicious));
   check("RiskReport tiene score ≥70", reportAfterSuspicious ? reportAfterSuspicious.riskScore >= 70 : false);
   check("RiskReport status = OPEN", reportAfterSuspicious?.status === "OPEN");
+  const evidence = reportAfterSuspicious
+    ? await prisma.riskSignalEvidence.findMany({ where: { riskReportId: reportAfterSuspicious.id } })
+    : [];
+  check("Evidencia conserva eventos fuente", evidence.some((item) =>
+    Array.isArray(item.sourceEventIds) && item.sourceEventIds.length > 0
+  ));
 
   console.log("\n--- Test 3: Sin duplicados en 24h ---");
 

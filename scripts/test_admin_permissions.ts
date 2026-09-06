@@ -206,6 +206,13 @@ async function runAll(ctx: TestContext): Promise<void> {
     assert.equal(r.body?.data?.id, reportForGetAndDismiss);
   });
 
+  test("Risk report access is audited", async () => {
+    const r = await apiRequest("GET", "/api/admin/audit-log", superCookie);
+    assert.equal(r.status, 200);
+    const logs: any[] = r.body?.data ?? [];
+    assert.ok(logs.some((log) => log.action === "RISK_REPORTS_ACCESSED" || log.action === "RISK_REPORT_ACCESSED"));
+  });
+
   test("ADMIN_REVIEWER dismiss report -> 200", async () => {
     const r = await apiRequest("PATCH", `/api/admin/risk-reports/${reportForGetAndDismiss}/status`, adminCookie, {
       status: "DISMISSED",

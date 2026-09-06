@@ -2,13 +2,13 @@
 
 Guía completa de la suite de pruebas del proyecto TradeArc MVP.
 
-**Última actualización:** 2026-09-06 (Sprint 9 en implementación)
+**Última actualización:** 2026-09-06 (Sprint 9 completado)
 
 ---
 
 ## 📊 Estructura de Tests
 
-El proyecto cuenta con **82 tests** organizados en **6 suites**:
+El proyecto cuenta con **84 tests** organizados en **6 suites**:
 
 ### Tests Unitarios (17 tests)
 - **Trust Score v2** (8 tests) - `test:trust-v2`
@@ -36,10 +36,14 @@ El proyecto cuenta con **82 tests** organizados en **6 suites**:
   - DTOs administrativos sanitizados
   - Solicitud y aprobación de suspensión/baneo
   - Protección contra autoaprobación
-  - Persistencia de evidencia de señales
+   - Persistencia de evidencia de señales
+   - Resolución de reportes al aprobar una sanción
+   - Expiración de aprobaciones con auditoría
+   - Carrera entre aprobadores concurrentes
+   - Linaje persistente de perfiles relacionados
 
 ### Tests Smoke (24 tests)
-- **Admin Permissions** (24 tests) - `test:admin-permissions`
+- **Admin Permissions** (25 tests) - `test:admin-permissions`
   - Sistema RBAC (3 roles: USER, ADMIN_REVIEWER, SUPER_ADMIN)
   - Permisos de lectura/escritura por endpoint
   - Casos de autorización y denegación
@@ -383,7 +387,7 @@ npm test && echo "Tests passed" || echo "Tests failed"
 
 ---
 
-**Última actualización:** 2026-09-03 05:18 UTC  
-**Sprint:** 4 (Cleanup + Suite Unificada)  
-**Cobertura:** 60 tests (17 unit, 22 e2e, 21 smoke)  
+**Última actualización:** 2026-09-06 UTC
+**Sprint:** 9 (Sistema de riesgo completo)
+**Cobertura:** 84 tests base más escenarios Sprint 9 de expiración, concurrencia, evidencia y linaje
 **Estrategia:** Fail-safe, fresh DB, real server
