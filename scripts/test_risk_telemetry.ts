@@ -140,6 +140,11 @@ const unavailableSignals = calculateRiskScore({
   newAccountsPercentage: null,
   repeatedTargetProviderScore: null,
   ratingConcentrationScore: null,
+  synchronizedCompletionScore: null,
+  reviewBurstScore: null,
+  accountClusterScore: null,
+  profileRecreationScore: null,
+  actionVolumeScore: null,
 });
 assert.equal(unavailableSignals.score, 0, "T9: null (sin datos) no debe sumar puntos");
 assert.equal(unavailableSignals.level, "normal", "T9: Nivel debe ser 'normal'");
@@ -169,4 +174,22 @@ assert.equal(riskPenaltyForLevel("suspicious"), 20);
 assert.equal(riskPenaltyForLevel("high-risk"), 40);
 console.log("✓ Tests 10-15: bandas 30/31/50/51/69/70/100 y penalización 0/10/20/40");
 
-console.log("\n✅ Todos los tests de Risk Telemetry pasaron (15 casos)");
+const additionalSignals = calculateRiskScore({
+  avgSearchTimeSeconds: null,
+  avgRequestToCompletionMinutes: null,
+  avgMessagesPerRequest: null,
+  newAccountsPercentage: null,
+  repeatedTargetProviderScore: null,
+  ratingConcentrationScore: null,
+  synchronizedCompletionScore: 100,
+  reviewBurstScore: 100,
+  accountClusterScore: 100,
+  profileRecreationScore: 100,
+  actionVolumeScore: 100,
+});
+assert.equal(additionalSignals.signals.length, 11, "T16: El contrato debe incluir 11 señales");
+assert.ok(additionalSignals.score >= 70, "T16: Las señales adicionales deben poder generar riesgo alto");
+assert.equal(additionalSignals.level, "high-risk");
+console.log("✓ Test 16: contrato de 11 señales adicionales tipado y puntuable");
+
+console.log("\n✅ Todos los tests de Risk Telemetry pasaron (16 casos)");

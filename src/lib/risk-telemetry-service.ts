@@ -48,6 +48,11 @@ export async function extractProviderMetrics(providerId: string): Promise<RiskSc
   const newAccountsPercentage = calculateNewAccountsPercentage(threads);
   const repeatedTargetProviderScore = calculateRepeatedTargetScore(threads);
   const ratingConcentrationScore = calculateRatingConcentration(reviews);
+  const synchronizedCompletionScore = calculateSynchronizedCompletions(threads);
+  const reviewBurstScore = calculateReviewBurst(reviews);
+  const accountClusterScore = calculateAccountCluster(threads);
+  const profileRecreationScore = null;
+  const actionVolumeScore = calculateActionVolume(threads, reviews);
 
   return {
     // Search telemetry does not exist yet (no SearchEvent model); report it
@@ -58,6 +63,11 @@ export async function extractProviderMetrics(providerId: string): Promise<RiskSc
     newAccountsPercentage,
     repeatedTargetProviderScore,
     ratingConcentrationScore,
+    synchronizedCompletionScore,
+    reviewBurstScore,
+    accountClusterScore,
+    profileRecreationScore,
+    actionVolumeScore,
   };
 }
 
@@ -142,6 +152,80 @@ function calculateRatingConcentration(reviews: any[]): number {
   const concentrationPercentage = (reviewsFromNewAccounts.length / reviews.length) * 100;
 
   return Math.min(concentrationPercentage, 100);
+}
+
+function calculateSynchronizedCompletions(threads: any[]): number | null {
+  const completedAt = threads
+    .filter((thread) => thread.closure_outcome === "BILATERAL" && thread.completedAt)
+    .map((thread) => new Date(thread.completedAt).getTime())
+    .sort((a, b) => a - b);
+
+  if (completedAt.length < 2) return null;
+
+  let synchronizedPairs = 0;
+  for (let index = 1; index < completedAt.length; index += 1) {
+    if (completedAt[index] - completedAt[index - 1] <= 60 * 1000) synchronizedPairs += 1;
+  }
+
+  return Math.min((synchronizedPairs / (completedAt.length - 1)) * 100, 100);
+}
+
+function calculateReviewBurst(reviews: any[]): number | null {
+  if (reviews.length === 0) return null;
+
+  const now = Date.now();
+  const recentReviews = reviews.filter((review) => {
+    const createdAt = new Date(review.createdAt).getTime();
+    return now - createdAt <= 24 * 60 * 60 * 1000;
+  });
+
+  if (recentReviews.length < 2) return 0;
+  return Math.min((recentReviews.length / 5) * 100, 100);
+}
+
+function calculateAccountCluster(threads: any[]): number | null {
+  if (threads.length === 0) return null;
+
+  const requesterGroups = new Map<string, { count: number; createdAt: number | null }>();
+  for (const thread of threads) {
+    if (!thread.senderId) continue;
+    const current = requesterGroups.get(thread.senderId) ?? {
+      count: 0,
+      createdAt: thread.sender?.createdAt ? new Date(thread.sender.createdAt).getTime() : null,
+    };
+    current.count += 1;
+    requesterGroups.set(thread.senderId, current);
+  }
+
+  if (requesterGroups.size < 2) return 0;
+
+  const now = Date.now();
+  const newAccountGroups = [...requesterGroups.values()].filter((group) =>
+    group.createdAt !== null && now - group.createdAt <= 30 * 24 * 60 * 60 * 1000
+  );
+  const repeatedNewAccountGroups = newAccountGroups.filter((group) => group.count >= 2).length;
+  return Math.min((repeatedNewAccountGroups / requesterGroups.size) * 100, 100);
+}
+
+function calculateActionVolume(threads: any[], reviews: any[]): number | null {
+  const timestamps = [
+    ...threads.map((thread) => new Date(thread.createdAt).getTime()),
+    ...threads.flatMap((thread) => thread.messages.map((message: any) => new Date(message.createdAt).getTime())),
+    ...reviews.map((review) => new Date(review.createdAt).getTime()),
+  ].filter(Number.isFinite).sort((a, b) => a - b);
+
+  if (timestamps.length === 0) return null;
+
+  const now = Date.now();
+  const recent = timestamps.filter((timestamp) => now - timestamp <= 60 * 60 * 1000);
+  if (recent.length <= 80) return 0;
+
+  const intervals = recent.slice(1).map((timestamp, index) => timestamp - recent[index]);
+  const mean = intervals.reduce((sum, value) => sum + value, 0) / Math.max(intervals.length, 1);
+  const variance = intervals.reduce((sum, value) => sum + (value - mean) ** 2, 0) / Math.max(intervals.length, 1);
+  const standardDeviation = Math.sqrt(variance);
+  const regularityBonus = standardDeviation <= 1000 ? 25 : 0;
+  return Math.min(50 + Math.min((recent.length - 80) / 80 * 25, 25) + regularityBonus, 100);
 }
 
 export async function analyzeProviderRisk(providerId: string): Promise<void> {

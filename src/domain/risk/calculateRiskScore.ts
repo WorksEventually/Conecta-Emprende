@@ -13,6 +13,11 @@ export type RiskScoreInput = {
   newAccountsPercentage:number|null;
   repeatedTargetProviderScore:number|null;
   ratingConcentrationScore:number|null;
+  synchronizedCompletionScore?: number|null;
+  reviewBurstScore?: number|null;
+  accountClusterScore?: number|null;
+  profileRecreationScore?: number|null;
+  actionVolumeScore?: number|null;
 };
 
 export type RiskLevel = "normal"|"unusual"|"suspicious"|"high-risk";
@@ -23,7 +28,13 @@ export type RiskSignalKey =
   | "LOW_MESSAGE_COUNT"
   | "NEW_ACCOUNT_CONCENTRATION"
   | "REPEATED_PROVIDER_TARGET"
-  | "RATING_CONCENTRATION";
+  | "RATING_CONCENTRATION"
+  | "SYNCHRONIZED_COMPLETIONS"
+  | "REVIEW_BURST"
+  | "ACCOUNT_CLUSTER"
+  | "PROFILE_RECREATION"
+  | "ACTION_VOLUME"
+  | "INTERVAL_REGULARITY";
 
 export type RiskSignal = {
   key: RiskSignalKey;
@@ -96,6 +107,36 @@ export function calculateRiskSignals(input:RiskScoreInput):RiskSignal[] {
       observedValue: input.ratingConcentrationScore,
       threshold: 60,
       contribution: clamp(input.ratingConcentrationScore??0)*0.2,
+    },
+    {
+      key: "SYNCHRONIZED_COMPLETIONS",
+      observedValue: input.synchronizedCompletionScore ?? null,
+      threshold: 60,
+      contribution: clamp(input.synchronizedCompletionScore ?? 0)*0.2,
+    },
+    {
+      key: "REVIEW_BURST",
+      observedValue: input.reviewBurstScore ?? null,
+      threshold: 60,
+      contribution: clamp(input.reviewBurstScore ?? 0)*0.2,
+    },
+    {
+      key: "ACCOUNT_CLUSTER",
+      observedValue: input.accountClusterScore ?? null,
+      threshold: 60,
+      contribution: clamp(input.accountClusterScore ?? 0)*0.25,
+    },
+    {
+      key: "PROFILE_RECREATION",
+      observedValue: input.profileRecreationScore ?? null,
+      threshold: 60,
+      contribution: clamp(input.profileRecreationScore ?? 0)*0.25,
+    },
+    {
+      key: "ACTION_VOLUME",
+      observedValue: input.actionVolumeScore ?? null,
+      threshold: 80,
+      contribution: clamp(input.actionVolumeScore ?? 0)*0.2,
     },
   ];
 }
