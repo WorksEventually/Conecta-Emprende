@@ -2103,6 +2103,17 @@ async function startServer() {
       const input = parsed.data;
       const { displayName, category, aboutDescription } = input;
 
+      const bannedProvider = await prisma.provider.findFirst({
+        where: { userId, status: "BANNED" },
+        select: { id: true },
+      });
+      if (bannedProvider) {
+        return res.status(403).json({
+          success: false,
+          error: "Tu cuenta tiene un perfil baneado y no puede crear otro perfil de proveedor",
+        });
+      }
+
       const baseSlug = slugifyProviderName(displayName);
       let slug = baseSlug;
       let suffix = 2;

@@ -338,6 +338,32 @@ async function runAll(ctx: TestContext): Promise<void> {
     });
   });
 
+  test("Banned provider owner cannot create a replacement profile -> 403", async () => {
+    const lineageSlug = `${TEST_PREFIX}lineage-${Date.now()}`;
+    const lineageProvider = await prisma.provider.create({
+      data: {
+        userId: providerUserId,
+        displayName: "TEST Banned Lineage",
+        slug: lineageSlug,
+        city: LegacyCity.MANAGUA,
+        category: "Marketing Digital",
+        mainCategory: "Marketing Digital",
+        aboutDescription: "Provider baneado para validar la protección de linaje.",
+        status: "BANNED",
+      },
+    });
+    try {
+      const r = await apiRequest("POST", "/api/providers", providerCookie, {
+        displayName: "Replacement provider",
+        category: "Marketing Digital",
+        aboutDescription: "Perfil nuevo que no debe saltarse el linaje de riesgo.",
+      });
+      assert.equal(r.status, 403, `Expected 403, got ${r.status}: ${r.body?.error}`);
+    } finally {
+      await prisma.provider.delete({ where: { id: lineageProvider.id } });
+    }
+  });
+
   // ── SUPER_ADMIN: ACTION_TAKEN sí está permitido ─────────────────────────────
 
   test("SUPER_ADMIN can set ACTION_TAKEN -> 200", async () => {
