@@ -28,7 +28,15 @@ export interface ReviewEligibility {
 
 export const ratingApi = {
   getProviderRating:(providerProfileId:string)=>apiRequest<{avgRating:number|null;totalVerifiedReviews:number}>(`/api/providers/${encodeURIComponent(providerProfileId)}/rating`),
-  getTrustScore:(providerProfileId:string)=>apiRequest<{trustScore:number|null}>(`/api/providers/${encodeURIComponent(providerProfileId)}/trust-score`),
+  getTrustScore:(providerProfileId:string)=>apiRequest<{
+    trustScore: number | null;
+    publicScore: number | null;
+    evidenceLevel: "INSUFFICIENT_EVIDENCE" | "OK";
+    bilateralCompletions: number;
+    algorithmVersion: string;
+    publicScoreFrozen: boolean;
+    growthHold: boolean;
+  }>(`/api/providers/${encodeURIComponent(providerProfileId)}/trust-score`),
   getVerifiedReviews:(providerProfileId:string)=>apiRequest<ServerReview[]>(`/api/providers/${encodeURIComponent(providerProfileId)}/reviews`),
   getReviewEligibility: async (requestId:string) => {
     const response = await apiRequest<{ success: boolean; data: ReviewEligibility }>(`/api/quotes/${encodeURIComponent(requestId)}/review-eligibility`);

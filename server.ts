@@ -868,6 +868,45 @@ async function startServer() {
     }
   });
 
+  // Public trust score never exposes the internal score used for auditing.
+  app.get("/api/providers/:id/trust-score", async (req, res) => {
+    try {
+      const provider = await prisma.provider.findFirst({
+        where: { OR: [{ id: req.params.id }, { slug: req.params.id }] },
+        select: {
+          metrics: {
+            select: {
+              publicTrustScore: true,
+              evidenceLevel: true,
+              bilateralCompletions: true,
+              algorithmVersion: true,
+              publicScoreFrozen: true,
+              growthHold: true,
+            },
+          },
+        },
+      });
+      if (!provider) return res.status(404).json({ success: false, error: "Proveedor no encontrado" });
+
+      const metrics = provider.metrics;
+      return res.json({
+        success: true,
+        data: {
+          trustScore: metrics?.publicTrustScore ?? null,
+          publicScore: metrics?.publicTrustScore ?? null,
+          evidenceLevel: metrics?.evidenceLevel ?? "INSUFFICIENT_EVIDENCE",
+          bilateralCompletions: metrics?.bilateralCompletions ?? 0,
+          algorithmVersion: metrics?.algorithmVersion ?? "trust-v2.0.0",
+          publicScoreFrozen: metrics?.publicScoreFrozen ?? false,
+          growthHold: metrics?.growthHold ?? false,
+        },
+      });
+    } catch (error) {
+      console.error("Get public trust score error:", error);
+      return res.status(500).json({ success: false, error: "No se pudo obtener la confianza pública" });
+    }
+  });
+
   // GET Provider by id OR slug (spec §26.1)
   app.get("/api/providers/:id", async (req, res) => {
     try {
@@ -1961,7 +2000,14 @@ async function startServer() {
 
       const updated = await prisma.provider.update({
         where: { id: providerId },
-        data: { status: "ACTIVE", statusReason: null, suspendedUntil: null, statusUpdatedAt: new Date(), statusUpdatedById: userId },
+        data: {
+          status: "ACTIVE",
+          activatedAt: new Date(),
+          statusReason: null,
+          suspendedUntil: null,
+          statusUpdatedAt: new Date(),
+          statusUpdatedById: userId,
+        },
       });
 
       await createModerationAuditLog({

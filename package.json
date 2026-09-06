@@ -27,7 +27,9 @@
     "test:sprint6-e2e": "tsx scripts/test_sprint6_e2e_flows.ts",
     "test:sprint7-reviews": "tsx scripts/test_sprint7_review_eligibility.ts",
     "test:sprint7-feedback": "tsx scripts/test_sprint7_private_feedback.ts",
-    "test:sprint7-e2e": "tsx scripts/test_sprint7_e2e.ts"
+    "test:sprint7-e2e": "tsx scripts/test_sprint7_e2e.ts",
+    "test:sprint8-trust": "tsx scripts/test_sprint8_trust_contract.ts",
+    "rebuild:trust-scores": "tsx scripts/rebuild_trust_scores.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

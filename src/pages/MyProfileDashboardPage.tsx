@@ -217,7 +217,7 @@ export default function MyProfileDashboardPage() {
   const inactiveItems = catalogItems.filter((item: any) => item.availabilityStatus !== "DISPONIBLE");
   const mostConsulted = [...catalogItems].sort((a: any, b: any) => b.inquiryCount - a.inquiryCount)[0];
   const portfolioImages = currentProvider?.photos?.map((photo: any) => photo.imageUrl).filter(Boolean) || [];
-  const trustScore = currentProvider?.provider?.trustScore?.finalScore ?? provider.trustScore ?? 0;
+  const trustScore = currentProvider?.provider?.trustScore?.publicScore ?? null;
   const medals = currentProvider?.medals || [];
 
   const checklist = [
@@ -266,7 +266,7 @@ export default function MyProfileDashboardPage() {
               <p className="text-clamp-3">{provider.aboutDescription || provider.shortDescription}</p>
               <div className="badges">
                 <TrustScoreBadge
-                  trustScore={trustScore ? trustScore : null}
+                   trustScore={trustScore}
                   bilateralCompletions={provider.metrics?.bilateralCompletions ?? 0}
                   emailVerified={!!user?.emailVerified}
                   phoneVerified={provider.verified}

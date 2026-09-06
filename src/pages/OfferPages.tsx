@@ -491,7 +491,7 @@ export function OfferDetailPage() {
               <strong className="text-truncate" title={provider.displayName}>{provider.displayName}</strong>
               <span>{provider.city} · {provider.category}</span>
             </div>
-            <TrustBadge score={provider.trustScore?.finalScore ?? 0} />
+             <TrustBadge score={provider.trustScore?.publicScore ?? null} />
           </section>
           <div className="card-actions">
             {blockedFromQuotes ? (

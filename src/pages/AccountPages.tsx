@@ -44,7 +44,7 @@ export function MyProfilePage() {
   const provider = currentProvider?.provider;
   const photos = currentProvider?.photos || [];
   const medals = currentProvider?.medals || [];
-  const trustScore = currentProvider?.provider?.trustScore?.finalScore ?? 0;
+  const trustScore = currentProvider?.provider?.trustScore?.publicScore ?? null;
   const portfolioImages = photos.map((p: any) => p.imageUrl).filter(Boolean);
 
   if (!provider) {
