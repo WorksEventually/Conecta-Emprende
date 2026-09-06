@@ -289,6 +289,7 @@ model Provider {
   categoryLinks       ProviderCategory[]
   trustScoreSnapshots TrustScoreSnapshot[]
   riskReports         RiskReport[]
+  riskSignalEvidence  RiskSignalEvidence[]
   reputationEvents    ReputationEvent[]
   privateFeedback     ProviderPrivateFeedback[]
 
@@ -530,6 +531,7 @@ model RiskReport {
   resolvedAt                    DateTime?
   resolvedByUserId              String?
   resolvedBy                    User?     @relation("RiskReportResolvedBy", fields: [resolvedByUserId], references: [id], onDelete: SetNull)
+  signalEvidence                RiskSignalEvidence[]
 
   @@index([providerId])
   @@index([status])
@@ -537,6 +539,28 @@ model RiskReport {
   @@index([escalatedByUserId])
   @@index([resolvedByUserId])
   @@index([providerId, status, generatedAt])
+}
+
+model RiskSignalEvidence {
+  id              String      @id @default(cuid())
+  providerId      String
+  provider        Provider    @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  riskReportId    String?
+  riskReport      RiskReport? @relation(fields: [riskReportId], references: [id], onDelete: SetNull)
+  signalKey       String
+  observedValue   Float?
+  threshold       Float?
+  contribution    Float
+  windowStart     DateTime
+  windowEnd       DateTime
+  sourceEventIds  Json?
+  algorithmVersion String
+  createdAt       DateTime    @default(now())
+
+  @@index([providerId, createdAt])
+  @@index([providerId, signalKey, createdAt])
+  @@index([riskReportId])
+  @@index([algorithmVersion])
 }
 
 model ModerationAuditLog {

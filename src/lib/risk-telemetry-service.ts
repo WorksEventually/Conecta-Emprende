@@ -1,6 +1,7 @@
 import { prisma } from "./db";
 import type { RiskScoreInput } from "../domain/risk/calculateRiskScore";
 import { calculateRiskScore } from "../domain/risk/calculateRiskScore";
+import { TRUST_SCORE_ALGORITHM_VERSION } from "../domain/rating/calculateTrustScoreV2";
 
 export async function extractProviderMetrics(providerId: string): Promise<RiskScoreInput> {
   const threads = await prisma.quoteThread.findMany({
@@ -167,32 +168,50 @@ export async function analyzeProviderRisk(providerId: string): Promise<void> {
     },
   });
 
-  if (existingReport) {
-    await prisma.riskReport.update({
-      where: { id: existingReport.id },
-      data: {
-        riskScore: riskResult.score,
-        avgSearchTimeSeconds: metrics.avgSearchTimeSeconds,
-        avgRequestToCompletionMinutes: metrics.avgRequestToCompletionMinutes,
-        avgMessagesPerRequest: metrics.avgMessagesPerRequest,
-        newAccountsPercentage: metrics.newAccountsPercentage,
-        ratingConcentrationScore: metrics.ratingConcentrationScore,
-        recommendedAction: riskResult.recommendedAction,
-      },
-    });
-  } else {
-    await prisma.riskReport.create({
-      data: {
+  const windowEnd = new Date();
+  const windowStart = new Date(windowEnd.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+  await prisma.$transaction(async (tx) => {
+    const report = existingReport
+      ? await tx.riskReport.update({
+          where: { id: existingReport.id },
+          data: {
+            riskScore: riskResult.score,
+            avgSearchTimeSeconds: metrics.avgSearchTimeSeconds,
+            avgRequestToCompletionMinutes: metrics.avgRequestToCompletionMinutes,
+            avgMessagesPerRequest: metrics.avgMessagesPerRequest,
+            newAccountsPercentage: metrics.newAccountsPercentage,
+            ratingConcentrationScore: metrics.ratingConcentrationScore,
+            recommendedAction: riskResult.recommendedAction,
+          },
+        })
+      : await tx.riskReport.create({
+          data: {
+            providerId,
+            riskScore: riskResult.score,
+            avgSearchTimeSeconds: metrics.avgSearchTimeSeconds,
+            avgRequestToCompletionMinutes: metrics.avgRequestToCompletionMinutes,
+            avgMessagesPerRequest: metrics.avgMessagesPerRequest,
+            newAccountsPercentage: metrics.newAccountsPercentage,
+            ratingConcentrationScore: metrics.ratingConcentrationScore,
+            status: "OPEN",
+            recommendedAction: riskResult.recommendedAction,
+          },
+        });
+
+    await tx.riskSignalEvidence.createMany({
+      data: riskResult.signals.map((signal) => ({
         providerId,
-        riskScore: riskResult.score,
-        avgSearchTimeSeconds: metrics.avgSearchTimeSeconds,
-        avgRequestToCompletionMinutes: metrics.avgRequestToCompletionMinutes,
-        avgMessagesPerRequest: metrics.avgMessagesPerRequest,
-        newAccountsPercentage: metrics.newAccountsPercentage,
-        ratingConcentrationScore: metrics.ratingConcentrationScore,
-        status: "OPEN",
-        recommendedAction: riskResult.recommendedAction,
-      },
+        riskReportId: report.id,
+        signalKey: signal.key,
+        observedValue: signal.observedValue,
+        threshold: signal.threshold,
+        contribution: signal.contribution,
+        windowStart,
+        windowEnd,
+        sourceEventIds: [],
+        algorithmVersion: TRUST_SCORE_ALGORITHM_VERSION,
+      })),
     });
-  }
+  });
 }
