@@ -577,8 +577,8 @@ model RiskSignalEvidence {
 
 model ModerationAuditLog {
   id          String   @id @default(cuid())
-  actorUserId String
-  actor       User     @relation("ModerationAuditActor", fields: [actorUserId], references: [id], onDelete: Cascade)
+  actorUserId String?
+  actor       User?    @relation("ModerationAuditActor", fields: [actorUserId], references: [id], onDelete: SetNull)
   action      String
   targetType  String
   targetId    String

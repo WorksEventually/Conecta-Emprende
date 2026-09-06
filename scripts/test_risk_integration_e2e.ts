@@ -18,6 +18,7 @@ import bcrypt from "bcryptjs";
 
 const BASE_URL = process.env.API_URL ?? "http://localhost:3000";
 const SEED_PASSWORD = "Conecta123!";
+const THIRTY_ONE_DAYS_MS = 31 * 24 * 60 * 60 * 1000;
 
 const prisma = new PrismaClient();
 
@@ -36,10 +37,10 @@ function check(name: string, cond: boolean, extra?: unknown) {
 async function api(
   method: string,
   path: string,
-  opts: { cookie?: string; body?: unknown } = {}
+  opts: { cookie?: string; body?: unknown } = {},
 ): Promise<{ status: number; body: any; cookie: string }> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (opts.cookie) headers["Cookie"] = opts.cookie;
+  if (opts.cookie) headers.Cookie = opts.cookie;
   const res = await fetch(`${BASE_URL}${path}`, {
     method,
     headers,
@@ -47,7 +48,7 @@ async function api(
   });
   const rawCookies: string[] =
     (res.headers as any).getSetCookie?.() ?? (res.headers.get("set-cookie")?.split(",") ?? []);
-  const cookie = rawCookies.map((c) => c.split(";")[0]).join("; ");
+  const cookie = rawCookies.map((value) => value.split(";")[0]).join("; ");
   let body: any = null;
   try {
     body = await res.json();
@@ -63,43 +64,6 @@ async function login(email: string): Promise<{ cookie: string; userId: string }>
   return { cookie: res.cookie, userId };
 }
 
-async function createSuspiciousThread(requesterCookie: string, providerId: string): Promise<string> {
-  const thread = await prisma.quoteThread.create({
-    data: {
-      senderId: requesterCookie,
-      providerId,
-      subject: "Thread sospechoso para test",
-      status: "OPEN",
-    },
-  });
-
-  await prisma.quoteMessage.create({
-    data: {
-      threadId: thread.id,
-      authorId: requesterCookie,
-      authorRole: "client",
-      body: "Mensaje inicial",
-    },
-  });
-
-  const now = new Date();
-  const fiveMinutesLater = new Date(now.getTime() + 5 * 60 * 1000);
-
-  await prisma.quoteThread.update({
-    where: { id: thread.id },
-    data: {
-      confirmedByRequesterAt: fiveMinutesLater,
-      confirmedByProviderAt: fiveMinutesLater,
-      completedAt: fiveMinutesLater,
-      workflow_phase: "CLOSED",
-      closure_outcome: "BILATERAL",
-      status: "COMPLETED",
-    },
-  });
-
-  return thread.id;
-}
-
 async function main() {
   console.log("→ Risk Telemetry Integration Tests (E2E)\n");
 
@@ -111,77 +75,65 @@ async function main() {
 
   check("Requester + Provider login", Boolean(requester.cookie && provider.cookie));
 
-  // Clean up temporary user if it exists from previous failed run
-  await prisma.quoteThread.deleteMany({ 
-    where: { sender: { email: "newaccount@risk-test.temp" } } 
+  // Clean up temporary user if it exists from a previous failed run.
+  await prisma.quoteThread.deleteMany({
+    where: { sender: { email: "newaccount@risk-test.temp" } },
   });
-  await prisma.user.deleteMany({ 
-    where: { email: "newaccount@risk-test.temp" } 
+  await prisma.user.deleteMany({
+    where: { email: "newaccount@risk-test.temp" },
   });
 
-  // Create temporary new user for Test 2 (account created today, <30 days old)
   const newUser = await prisma.user.create({
     data: {
       email: "newaccount@risk-test.temp",
       name: "New Account Test",
       password: await bcrypt.hash(SEED_PASSWORD, 10),
-      createdAt: new Date(), // Fresh account (<30 days)
+      createdAt: new Date(),
     },
   });
 
-  // Deterministic start: the seeded provider already exhibits an anomalous
-  // aggregate (fabricated fast completions, new accounts, single requester),
-  // which generates a RiskReport on its own. Clean the provider state so
-  // Test 1 validates the normal path in isolation (Test 2 recreates its own
-  // suspicious data afterwards). Review.requestId is SetNull on thread delete,
-  // and seed reviews are removed to reset the rating concentration signal.
+  // The seeded provider already exhibits an anomalous aggregate. Clean the
+  // provider state so each scenario controls its own risk inputs.
   await prisma.quoteThread.deleteMany({ where: { providerId } });
   await prisma.review.deleteMany({ where: { providerId } });
   await prisma.riskReport.deleteMany({ where: { providerId } });
 
   console.log("\n--- Test 1: Thread normal no genera RiskReport ---");
-  
+
+  const normalCreatedAt = new Date(Date.now() - 3 * 60 * 60 * 1000);
+  const normalCompletedAt = new Date(Date.now() - 60 * 60 * 1000);
   const normalThread = await prisma.quoteThread.create({
     data: {
       senderId: requester.userId,
       providerId,
       subject: "Thread normal",
-      status: "OPEN",
-    },
-  });
-
-  await prisma.quoteMessage.create({
-    data: {
-      threadId: normalThread.id,
-      authorId: requester.userId,
-      authorRole: "client",
-      body: "Mensaje 1",
-    },
-  });
-
-  await prisma.quoteMessage.create({
-    data: {
-      threadId: normalThread.id,
-      authorId: provider.userId,
-      authorRole: "provider",
-      body: "Mensaje 2",
-    },
-  });
-
-  const now = new Date();
-  const twoHoursLater = new Date(now.getTime() + 2 * 60 * 60 * 1000);
-
-  await prisma.quoteThread.update({
-    where: { id: normalThread.id },
-    data: {
-      confirmedByRequesterAt: twoHoursLater,
-      confirmedByProviderAt: twoHoursLater,
-      completedAt: twoHoursLater,
+      status: "COMPLETED",
       workflow_phase: "CLOSED",
       closure_outcome: "BILATERAL",
-      status: "COMPLETED",
-      createdAt: now,
+      createdAt: normalCreatedAt,
+      completedAt: normalCompletedAt,
+      confirmedByRequesterAt: normalCompletedAt,
+      confirmedByProviderAt: normalCompletedAt,
     },
+  });
+
+  await prisma.quoteMessage.createMany({
+    data: [
+      {
+        threadId: normalThread.id,
+        authorId: requester.userId,
+        authorRole: "client",
+        body: "Mensaje 1",
+        createdAt: new Date(normalCreatedAt.getTime() + 10 * 60 * 1000),
+      },
+      {
+        threadId: normalThread.id,
+        authorId: provider.userId,
+        authorRole: "provider",
+        body: "Mensaje 2",
+        createdAt: new Date(normalCreatedAt.getTime() + 20 * 60 * 1000),
+      },
+    ],
   });
 
   const { analyzeProviderRisk } = await import("../src/lib/risk-telemetry-service");
@@ -194,36 +146,89 @@ async function main() {
 
   check("Thread normal no genera RiskReport", !reportAfterNormal);
 
-  console.log("\n--- Test 2: Thread sospechoso genera RiskReport ---");
+  console.log("\n--- Test 2: Actividad fuera de 30 días no puntúa ni deja evidencia actual ---");
 
   await prisma.quoteThread.deleteMany({ where: { providerId } });
   await prisma.riskReport.deleteMany({ where: { providerId } });
 
-  for (let i = 0; i < 5; i++) {
-    // Use newUser for 4 out of 5 threads (80% new accounts)
-    const senderToUse = i < 4 ? newUser.id : requester.userId;
-    
+  const oldEventIds: string[] = [];
+  const oldThreadIds: string[] = [];
+  const oldBase = new Date(Date.now() - THIRTY_ONE_DAYS_MS);
+  for (let index = 0; index < 5; index += 1) {
+    const oldCreatedAt = new Date(oldBase.getTime() + index * 60 * 1000);
+    const oldCompletedAt = new Date(oldCreatedAt.getTime() + 5 * 60 * 1000);
+    const senderId = index < 4 ? newUser.id : requester.userId;
     const thread = await prisma.quoteThread.create({
       data: {
-        senderId: senderToUse,
+        senderId,
         providerId,
-        subject: `Thread sospechoso ${i}`,
+        subject: `Thread histórico sospechoso ${index}`,
         status: "COMPLETED",
         workflow_phase: "CLOSED",
         closure_outcome: "BILATERAL",
-        createdAt: new Date(),
-        completedAt: new Date(Date.now() + 5 * 60 * 1000),
-        confirmedByRequesterAt: new Date(Date.now() + 5 * 60 * 1000),
-        confirmedByProviderAt: new Date(Date.now() + 5 * 60 * 1000),
+        createdAt: oldCreatedAt,
+        completedAt: oldCompletedAt,
+        confirmedByRequesterAt: oldCompletedAt,
+        confirmedByProviderAt: oldCompletedAt,
+      },
+    });
+    oldThreadIds.push(thread.id);
+
+    await prisma.quoteMessage.create({
+      data: {
+        threadId: thread.id,
+        authorId: senderId,
+        authorRole: "client",
+        body: "Solo un mensaje histórico",
+        createdAt: oldCreatedAt,
+      },
+    });
+    const event = await prisma.requestEvent.create({
+      data: {
+        requestId: thread.id,
+        eventType: "COMPLETION_CONFIRMED",
+        idempotencyKey: `risk-integration-old-${thread.id}`,
+        occurredAt: oldCompletedAt,
+        createdAt: oldCompletedAt,
+      },
+    });
+    oldEventIds.push(event.id);
+  }
+
+  await analyzeProviderRisk(providerId);
+  const reportAfterHistoricalActivity = await prisma.riskReport.findFirst({
+    where: { providerId, status: "OPEN" },
+  });
+  check("Actividad fuera de ventana no genera RiskReport", !reportAfterHistoricalActivity);
+
+  console.log("\n--- Test 3: Actividad reciente sospechosa genera RiskReport ---");
+
+  const suspiciousCreatedAt = new Date(Date.now() - 10 * 60 * 1000);
+  const suspiciousCompletedAt = new Date(Date.now() - 5 * 60 * 1000);
+  for (let index = 0; index < 5; index += 1) {
+    const senderId = index < 4 ? newUser.id : requester.userId;
+    const thread = await prisma.quoteThread.create({
+      data: {
+        senderId,
+        providerId,
+        subject: `Thread sospechoso reciente ${index}`,
+        status: "COMPLETED",
+        workflow_phase: "CLOSED",
+        closure_outcome: "BILATERAL",
+        createdAt: suspiciousCreatedAt,
+        completedAt: suspiciousCompletedAt,
+        confirmedByRequesterAt: suspiciousCompletedAt,
+        confirmedByProviderAt: suspiciousCompletedAt,
       },
     });
 
     await prisma.quoteMessage.create({
       data: {
         threadId: thread.id,
-        authorId: senderToUse,
+        authorId: senderId,
         authorRole: "client",
         body: "Solo un mensaje",
+        createdAt: suspiciousCreatedAt,
       },
     });
     await prisma.requestEvent.create({
@@ -231,6 +236,8 @@ async function main() {
         requestId: thread.id,
         eventType: "COMPLETION_CONFIRMED",
         idempotencyKey: `risk-integration-completion-${thread.id}`,
+        occurredAt: suspiciousCompletedAt,
+        createdAt: suspiciousCompletedAt,
       },
     });
   }
@@ -242,17 +249,25 @@ async function main() {
     orderBy: { generatedAt: "desc" },
   });
 
-  check("Thread sospechoso genera RiskReport", Boolean(reportAfterSuspicious));
+  check("Actividad reciente sospechosa genera RiskReport", Boolean(reportAfterSuspicious));
   check("RiskReport tiene score ≥70", reportAfterSuspicious ? reportAfterSuspicious.riskScore >= 70 : false);
   check("RiskReport status = OPEN", reportAfterSuspicious?.status === "OPEN");
   const evidence = reportAfterSuspicious
     ? await prisma.riskSignalEvidence.findMany({ where: { riskReportId: reportAfterSuspicious.id } })
     : [];
-  check("Evidencia conserva eventos fuente", evidence.some((item) =>
-    Array.isArray(item.sourceEventIds) && item.sourceEventIds.length > 0
+  check("Evidencia conserva eventos fuente recientes", evidence.some((item) =>
+    Array.isArray(item.sourceEventIds) && item.sourceEventIds.length > 0,
+  ));
+  check("Evidencia no conserva eventos fuera de ventana", evidence.every((item) =>
+    !Array.isArray(item.sourceEventIds)
+      || !item.sourceEventIds.some((id) => oldEventIds.includes(String(id))),
+  ));
+  check("Evidencia no conserva registros fuera de ventana", evidence.every((item) =>
+    !Array.isArray(item.sourceRecordIds)
+      || !item.sourceRecordIds.some((id) => oldThreadIds.includes(String(id))),
   ));
 
-  console.log("\n--- Test 3: Sin duplicados en 24h ---");
+  console.log("\n--- Test 4: Sin duplicados en 24h ---");
 
   await analyzeProviderRisk(providerId);
 
@@ -267,19 +282,14 @@ async function main() {
   console.log(`✅ Tests pasados: ${passed}`);
   console.log(`❌ Tests fallados: ${failed}`);
 
-  // Cleanup: remove temporary test user and related data
-  await prisma.quoteThread.deleteMany({ 
-    where: { senderId: newUser.id } 
-  });
-  await prisma.user.deleteMany({ 
-    where: { email: "newaccount@risk-test.temp" } 
-  });
+  await prisma.quoteThread.deleteMany({ where: { providerId } });
+  await prisma.riskReport.deleteMany({ where: { providerId } });
+  await prisma.user.deleteMany({ where: { email: "newaccount@risk-test.temp" } });
+  await prisma.$disconnect();
 
   if (failed > 0) {
     process.exit(1);
   }
-
-  await prisma.$disconnect();
 }
 
 main().catch((err) => {

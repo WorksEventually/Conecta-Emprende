@@ -287,7 +287,7 @@ async function startServer() {
   };
 
   async function createModerationAuditLog(data: {
-    actorUserId: string;
+    actorUserId?: string | null;
     action: string;
     targetType: string;
     targetId: string;
@@ -296,13 +296,52 @@ async function startServer() {
   }) {
     return prisma.moderationAuditLog.create({
       data: {
-        actor: { connect: { id: data.actorUserId } },
+        ...(data.actorUserId
+          ? { actor: { connect: { id: data.actorUserId } } }
+          : { actorUserId: null }),
         action: data.action,
         targetType: data.targetType,
         targetId: data.targetId,
         reason: data.reason,
         metadata: data.metadata as Prisma.InputJsonValue | undefined,
       },
+    });
+  }
+
+  async function expirePendingModerationApprovals(now = new Date()): Promise<number> {
+    const candidates = await prisma.moderationActionApproval.findMany({
+      where: { status: "PENDING", expiresAt: { lte: now } },
+      select: { id: true, action: true, targetId: true },
+    });
+    if (candidates.length === 0) return 0;
+
+    return prisma.$transaction(async (tx) => {
+      let expiredCount = 0;
+      for (const approval of candidates) {
+        const expired = await tx.moderationActionApproval.updateMany({
+          where: { id: approval.id, status: "PENDING", expiresAt: { lte: now } },
+          data: { status: "EXPIRED" },
+        });
+        if (expired.count !== 1) continue;
+
+        await tx.moderationAuditLog.create({
+          data: {
+            actorUserId: null,
+            action: "MODERATION_APPROVAL_EXPIRED",
+            targetType: "PROVIDER",
+            targetId: approval.targetId,
+            reason: "La aprobación superó su ventana de validez",
+            metadata: {
+              approvalId: approval.id,
+              action: approval.action,
+              expirationMode: "SYSTEM_SWEEP",
+              actorType: "SYSTEM",
+            } as Prisma.InputJsonValue,
+          },
+        });
+        expiredCount += 1;
+      }
+      return expiredCount;
     });
   }
 
@@ -1860,6 +1899,8 @@ async function startServer() {
         return res.status(400).json({ success: false, error: "Los datos de aprobación son inválidos", details: parsed.error.issues });
       }
 
+      await expirePendingModerationApprovals();
+
       const { userId } = req.user;
       const provider = await prisma.provider.findUnique({
         where: { id: req.params.providerId },
@@ -1920,6 +1961,8 @@ async function startServer() {
 
   app.get("/api/admin/moderation-approvals", authenticate, requireAdminReviewerOrSuperAdmin, async (_req, res) => {
     try {
+      await expirePendingModerationApprovals();
+
       const approvals = await prisma.moderationActionApproval.findMany({
         where: { status: "PENDING", expiresAt: { gt: new Date() } },
         orderBy: { requestedAt: "asc" },
@@ -1939,6 +1982,8 @@ async function startServer() {
       const parsed = moderationApprovalDecisionSchema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ success: false, error: "La aprobación no es válida", details: parsed.error.issues });
 
+      await expirePendingModerationApprovals();
+
       const { userId } = req.user;
       const approval = await prisma.moderationActionApproval.findUnique({
         where: { id: req.params.approvalId },
@@ -1947,28 +1992,14 @@ async function startServer() {
       if (approval.requestedByUserId === userId) {
         return res.status(403).json({ success: false, error: "La persona que solicita la acción no puede aprobarla" });
       }
+      if (approval.status === "EXPIRED") {
+        return res.status(409).json({ success: false, error: "La solicitud de aprobación expiró" });
+      }
       if (approval.status !== "PENDING") {
         return res.status(409).json({ success: false, error: "Esta solicitud de aprobación ya fue procesada" });
       }
       if (approval.expiresAt <= new Date()) {
-        await prisma.$transaction(async (tx) => {
-          const expired = await tx.moderationActionApproval.updateMany({
-            where: { id: approval.id, status: "PENDING" },
-            data: { status: "EXPIRED" },
-          });
-          if (expired.count === 1) {
-            await tx.moderationAuditLog.create({
-              data: {
-                actorUserId: userId,
-                action: "MODERATION_APPROVAL_EXPIRED",
-                targetType: "PROVIDER",
-                targetId: approval.targetId,
-                reason: "La aprobación superó su ventana de validez",
-                metadata: { approvalId: approval.id, action: approval.action },
-              },
-            });
-          }
-        });
+        await expirePendingModerationApprovals();
         return res.status(409).json({ success: false, error: "La solicitud de aprobación expiró" });
       }
 
@@ -2257,47 +2288,77 @@ async function startServer() {
       const primaryCategory = await ensureCategoryReference(mainCategory, rootCategory.id);
       const responseTimeHrs = input.responseTimeHrs || 1;
 
-      const provider = await prisma.provider.create({
-        data: {
-          userId,
-          displayName,
-          slug,
-          shortDescription: input.shortDescription || null,
-          aboutDescription,
-          logoUrl: input.logoUrl || null,
-          coverImageUrl: input.coverImageUrl || null,
-          city: legacyCity,
-          cityId: cityRef.id,
-          department: cityRef.departmentId ? cityMetadata[legacyCity].department : null,
-          serviceRadius: input.serviceRadius || null,
-          category,
-          mainCategory,
-          categoryLinks: {
-            create: [
-              { categoryId: rootCategory.id, isPrimary: false },
-              ...(primaryCategory.id !== rootCategory.id ? [{ categoryId: primaryCategory.id, isPrimary: true }] : []),
-            ],
-          },
-          priceRange: input.priceRange || null,
-          availability: normalizeAvailability(input.availability),
-          formalizationStatus: normalizeFormalizationStatus(input.formalizationStatus),
-          status: "DRAFT",
-          responseTimeHrs,
-          metrics: {
-            create: {
-              profileCompleteness: 55,
-              responseTimeHrs,
-              completedRequests: 0,
-              requestsResponded: 0,
-              trustScore: 30,
+      const provider = await prisma.$transaction(async (tx) => {
+        // Serialize concurrent profile creation for the same account. PostgreSQL
+        // row locking ensures the second request sees the lineage created by
+        // the first request before choosing its root.
+        const lockedUsers = await tx.$queryRaw<{ id: string }[]>`
+          SELECT "id" FROM "User" WHERE "id" = ${userId} FOR UPDATE
+        `;
+        if (lockedUsers.length !== 1) throw new Error("USER_NOT_FOUND");
+
+        // Multiple business profiles can belong to the same authenticated user.
+        // They share a lineage so a later confirmed ban is visible to risk review
+        // without requiring a test-only or manual database update.
+        const lineageMember = await tx.provider.findFirst({
+          where: { userId },
+          orderBy: { createdAt: "asc" },
+          select: { id: true, riskLineageRootId: true },
+        });
+        const lineageRootId = lineageMember?.riskLineageRootId ?? lineageMember?.id;
+
+        if (lineageMember && !lineageMember.riskLineageRootId) {
+          await tx.provider.update({
+            where: { id: lineageMember.id },
+            data: { riskLineageRootId: lineageMember.id },
+          });
+        }
+
+        const created = await tx.provider.create({
+          data: {
+            userId,
+            displayName,
+            slug,
+            shortDescription: input.shortDescription || null,
+            aboutDescription,
+            logoUrl: input.logoUrl || null,
+            coverImageUrl: input.coverImageUrl || null,
+            city: legacyCity,
+            cityId: cityRef.id,
+            department: cityRef.departmentId ? cityMetadata[legacyCity].department : null,
+            serviceRadius: input.serviceRadius || null,
+            category,
+            mainCategory,
+            categoryLinks: {
+              create: [
+                { categoryId: rootCategory.id, isPrimary: false },
+                ...(primaryCategory.id !== rootCategory.id ? [{ categoryId: primaryCategory.id, isPrimary: true }] : []),
+              ],
+            },
+            priceRange: input.priceRange || null,
+            availability: normalizeAvailability(input.availability),
+            formalizationStatus: normalizeFormalizationStatus(input.formalizationStatus),
+            status: "DRAFT",
+            responseTimeHrs,
+            riskLineageRootId: lineageRootId ?? undefined,
+            metrics: {
+              create: {
+                profileCompleteness: 55,
+                responseTimeHrs,
+                completedRequests: 0,
+                requestsResponded: 0,
+                trustScore: 30,
+              },
             },
           },
-        },
-      });
+        });
 
-      await prisma.provider.update({
-        where: { id: provider.id },
-        data: { riskLineageRootId: provider.id },
+        return lineageRootId
+          ? created
+          : tx.provider.update({
+              where: { id: created.id },
+              data: { riskLineageRootId: created.id },
+            });
       });
 
       await prisma.user.update({

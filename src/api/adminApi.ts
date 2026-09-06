@@ -72,8 +72,8 @@ export interface AdminRiskReport {
 
 export interface ModerationAuditLog {
   id: string;
-  actorUserId: string;
-  actor?: { id: string; name: string | null; email: string };
+  actorUserId: string | null;
+  actor?: { id: string; name: string | null; email: string } | null;
   action: string;
   targetType: string;
   targetId: string;

@@ -102,9 +102,26 @@ export const riskReportStatusSchema = z.object({
 export const riskReportEscalateSchema = z.object({ reviewerNotes: optionalTrimmedText, reason: optionalTrimmedText })
   .refine((value) => Boolean(value.reviewerNotes || value.reason), { message: "Agregá una nota para escalar el reporte" });
 
+const dateOnlyPattern = /^\d{4}-\d{2}-\d{2}$/;
+
+function isValidDateOnly(value: string): boolean {
+  if (!dateOnlyPattern.test(value)) return false;
+  const [year, month, day] = value.split("-").map(Number);
+  const parsed = new Date(Date.UTC(year, month - 1, day));
+  return parsed.getUTCFullYear() === year
+    && parsed.getUTCMonth() === month - 1
+    && parsed.getUTCDate() === day;
+}
+
+const suspensionExpirySchema = z.union([
+  z.string().datetime({ message: "La fecha de suspensión no es válida" }),
+  z.string().regex(dateOnlyPattern, { message: "La fecha de suspensión no es válida" })
+    .refine(isValidDateOnly, { message: "La fecha de suspensión no es válida" }),
+]).transform((value) => dateOnlyPattern.test(value) ? `${value}T23:59:59.999Z` : value);
+
 export const providerSuspendSchema = z.object({
   reason: requiredReason,
-  suspendedUntil: z.string().datetime({ message: "La fecha de suspensión no es válida" }).optional(),
+  suspendedUntil: suspensionExpirySchema.optional(),
 });
 
 export const providerModerationReasonSchema = z.object({ reason: requiredReason });
@@ -112,7 +129,7 @@ export const providerModerationReasonSchema = z.object({ reason: requiredReason 
 export const moderationApprovalActionSchema = z.object({
   action: z.enum(["SUSPEND", "BAN"]),
   reason: requiredReason,
-  suspendedUntil: z.string().datetime({ message: "La fecha de suspensión no es válida" }).optional(),
+  suspendedUntil: suspensionExpirySchema.optional(),
   riskReportId: z.string().trim().min(1).max(64).optional(),
 });
 

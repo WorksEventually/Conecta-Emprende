@@ -217,18 +217,9 @@ export default function AdminReportsPage() {
                 </div>
               </section>
 
-              {canReview && !isSuperAdmin && (
+              {canReview && (
                 <section className="content-section">
-                  <h2>Acciones de revisión</h2>
-                  <div className="report-actions">
-                    <button className="button secondary" type="button" onClick={() => moderateProvider("inactivate")}><Clock3 /> Inactivar</button>
-                  </div>
-                </section>
-              )}
-
-      {isSuperAdmin && (
-        <section className="content-section">
-                  <h2>Acciones de super administración</h2>
+                  <h2>Solicitar acción de moderación</h2>
                   <form className="admin-moderation-form" onSubmit={event => { event.preventDefault(); moderateProvider("suspend"); }}>
                     <label>
                       Razón obligatoria
@@ -239,33 +230,45 @@ export default function AdminReportsPage() {
                       <input type="date" value={suspendedUntil} onChange={event => setSuspendedUntil(event.target.value)} />
                     </label>
                     <div className="report-actions">
-                      <button className="button secondary"><AlertTriangle /> Suspender</button>
-                      <button className="button secondary" type="button" onClick={() => moderateProvider("restrict")}><AlertCircle /> Restringir</button>
-                      <button className="button secondary" type="button" onClick={() => moderateProvider("reactivate")}><RotateCcw /> Reactivar</button>
-                      <button className="button primary danger" type="button" onClick={() => moderateProvider("ban")}><Ban /> Banear</button>
+                      <button className="button secondary"><AlertTriangle /> Solicitar suspensión</button>
+                      <button className="button primary danger" type="button" onClick={() => moderateProvider("ban")}><Ban /> Solicitar baneo</button>
+                      <button className="button secondary" type="button" onClick={() => moderateProvider("inactivate")}><Clock3 /> Inactivar</button>
+                      {isSuperAdmin && (
+                        <>
+                          <button className="button secondary" type="button" onClick={() => moderateProvider("restrict")}><AlertCircle /> Restringir</button>
+                          <button className="button secondary" type="button" onClick={() => moderateProvider("reactivate")}><RotateCcw /> Reactivar</button>
+                        </>
+                      )}
                     </div>
                   </form>
-        </section>
-      )}
-
-      {isSuperAdmin && approvals.length > 0 && (
-        <section className="content-section">
-          <h2>Aprobaciones pendientes</h2>
-          {approvals.map(approval => (
-            <article key={approval.id} className="reviewer-note">
-              <strong>{approval.action === "BAN" ? "Baneo" : "Suspensión"}</strong>
-              <span>Solicitada por {approval.requestedBy?.name || approval.requestedByUserId}</span>
-              <small>Expira {new Date(approval.expiresAt).toLocaleString("es-NI")}</small>
-              {approval.requestedByUserId !== user?.id && (
-                <button className="button primary" type="button" onClick={async () => {
-                  try { await adminApi.approveModerationAction(approval.id); await load(); }
-                  catch (err) { setError((err as Error).message); }
-                }}>Aprobar</button>
+                  {!isSuperAdmin && (
+                    <p className="form-note">Las solicitudes de suspensión y baneo requieren la aprobación de una segunda persona de super administración.</p>
+                  )}
+                </section>
               )}
-            </article>
-          ))}
-        </section>
-      )}
+
+              {approvals.length > 0 && (
+                <section className="content-section">
+                  <h2>Aprobaciones pendientes</h2>
+                  {approvals.map(approval => (
+                    <article key={approval.id} className="reviewer-note">
+                      <strong>{approval.action === "BAN" ? "Baneo" : "Suspensión"}</strong>
+                      <span>Solicitada por {approval.requestedBy?.name || approval.requestedByUserId}</span>
+                      <small>Expira {new Date(approval.expiresAt).toLocaleString("es-NI")}</small>
+                      {isSuperAdmin ? (
+                        approval.requestedByUserId !== user?.id
+                          ? <button className="button primary" type="button" onClick={async () => {
+                              try { await adminApi.approveModerationAction(approval.id); await load(); }
+                              catch (err) { setError((err as Error).message); }
+                            }}>Aprobar</button>
+                          : <small>No podés autoaprobar tu propia solicitud.</small>
+                      ) : (
+                        <small>Esperando aprobación de super administración.</small>
+                      )}
+                    </article>
+                  ))}
+                </section>
+              )}
             </main>
           )}
 
@@ -275,7 +278,7 @@ export default function AdminReportsPage() {
               {auditLog.slice(0, 8).map(log => (
                 <article key={log.id}>
                   <strong>{log.action}</strong>
-                  <span>{log.actor?.email || log.actorUserId}</span>
+                  <span>{log.actor?.email || log.actorUserId || "Sistema"}</span>
                   <small>{new Date(log.createdAt).toLocaleString("es-NI")} · {log.reason}</small>
                 </article>
               ))}
