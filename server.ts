@@ -28,6 +28,8 @@ import {
   quoteAcceptanceSchema,
   reviewCreateSchema,
   reviewUpdateSchema,
+  commercialInteractionSchema,
+  privateFeedbackSchema,
   riskReportEscalateSchema,
   riskReportQuerySchema,
   riskReportStatusSchema,
@@ -53,7 +55,7 @@ import cron from "node-cron";
 import { resolveExpiredQuotes } from "./src/lib/cron/resolve-expired-quotes";
 import { recalculateProviderTrustScore } from "./src/lib/trust-score-service";
 import { analyzeProviderRisk } from "./src/lib/risk-telemetry-service";
-import { checkReviewEligibility } from "./src/domain/requests/reviewRules";
+import { checkReviewEligibility, isReviewEditable } from "./src/domain/requests/reviewRules";
 import {
   searchProviders,
   getFullProviderByIdOrSlug,
@@ -2273,6 +2275,90 @@ async function startServer() {
     }
   });
 
+  app.get("/api/quotes/:id/review-eligibility", authenticate, async (req, res) => {
+    try {
+      const eligibility = await checkReviewEligibility(req.params.id, req.user.userId);
+      return res.json({ success: true, data: eligibility });
+    } catch (error) {
+      console.error("Get review eligibility error:", error);
+      return res.status(500).json({ success: false, error: "No se pudo verificar si la solicitud permite reseña" });
+    }
+  });
+
+  app.post("/api/quotes/:id/private-feedback", authenticate, async (req, res) => {
+    try {
+      const parsed = privateFeedbackSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ success: false, error: parsed.error.issues[0]?.message || "El feedback es inválido" });
+      const { thread, role } = await getThreadParticipantRole(req.params.id, req.user.userId);
+      if (!thread) return res.status(404).json({ success: false, error: "Solicitud no encontrada" });
+      if (role !== "provider") return res.status(403).json({ success: false, error: "Solo el proveedor puede enviar feedback privado" });
+      if (thread.workflow_phase !== "CLOSED") return res.status(409).json({ success: false, error: "El feedback se habilita cuando la solicitud está cerrada" });
+
+      const feedback = await prisma.$transaction(async (tx) => {
+        const current = await tx.providerPrivateFeedback.findUnique({ where: { requestId: thread.id } });
+        if (!current) {
+          return tx.providerPrivateFeedback.create({
+            data: { requestId: thread.id, providerId: thread.providerId, authorId: req.user.userId, note: parsed.data.note },
+            select: { id: true, requestId: true, createdAt: true, updatedAt: true },
+          });
+        }
+        await tx.providerPrivateFeedbackHistory.create({
+          data: { feedbackId: current.id, authorId: current.authorId, note: current.note },
+        });
+        return tx.providerPrivateFeedback.update({
+          where: { id: current.id },
+          data: { note: parsed.data.note, authorId: req.user.userId },
+          select: { id: true, requestId: true, createdAt: true, updatedAt: true },
+        });
+      });
+      return res.status(201).json({ success: true, data: feedback });
+    } catch (error) {
+      console.error("Create private feedback error:", error);
+      return res.status(500).json({ success: false, error: "No se pudo guardar el feedback privado" });
+    }
+  });
+
+  app.get("/api/quotes/:id/private-feedback", authenticate, async (req, res) => {
+    try {
+      const thread = await prisma.quoteThread.findUnique({ where: { id: req.params.id }, include: { provider: { select: { userId: true } } } });
+      if (!thread) return res.status(404).json({ success: false, error: "Solicitud no encontrada" });
+      const roles = await getUserSystemRoles(req.user.userId);
+      const isAdmin = roles.has("ADMIN_REVIEWER") || roles.has("SUPER_ADMIN");
+      if (thread.provider.userId !== req.user.userId && !isAdmin) {
+        return res.status(403).json({ success: false, error: "Este feedback es privado para el proveedor y el equipo de moderación" });
+      }
+      const feedback = await prisma.providerPrivateFeedback.findUnique({
+        where: { requestId: thread.id },
+        select: { id: true, requestId: true, note: true, createdAt: true, updatedAt: true },
+      });
+      return res.json({ success: true, data: feedback });
+    } catch (error) {
+      console.error("Get private feedback error:", error);
+      return res.status(500).json({ success: false, error: "No se pudo obtener el feedback privado" });
+    }
+  });
+
+  app.post("/api/admin/threads/:id/commercial-interaction", authenticate, requireAdminReviewerOrSuperAdmin, async (req, res) => {
+    try {
+      const parsed = commercialInteractionSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ success: false, error: parsed.error.issues[0]?.message || "La nota es inválida" });
+      const thread = await prisma.quoteThread.findUnique({ where: { id: req.params.id }, select: { id: true } });
+      if (!thread) return res.status(404).json({ success: false, error: "Solicitud no encontrada" });
+      const audit = await createModerationAuditLog({
+        actorUserId: req.user.userId,
+        action: "COMMERCIAL_INTERACTION_CONFIRMED",
+        targetType: "QUOTE_THREAD",
+        targetId: thread.id,
+        reason: parsed.data.note,
+        metadata: { source: "sprint-7-review-eligibility" },
+      });
+      return res.status(201).json({ success: true, data: { id: audit.id, threadId: thread.id, confirmedAt: audit.createdAt } });
+    } catch (error) {
+      console.error("Confirm commercial interaction error:", error);
+      return res.status(500).json({ success: false, error: "No se pudo registrar la interacción comercial" });
+    }
+  });
+
   // POST Create Review
   app.post("/api/reviews", authenticate, idempotencyMiddleware, async (req, res) => {
     try {
@@ -2300,6 +2386,7 @@ async function startServer() {
           ALREADY_REVIEWED: "Ya reseñaste esta solicitud",
           OUTCOME_NOT_REVIEWABLE: "Este tipo de cierre no permite reseña",
           NO_ENGAGEMENT_BEFORE_CANCELLATION: "No hubo suficiente interacción para reseñar",
+          CLOSURE_TIME_NOT_RECORDED: "No se pudo verificar el momento del cierre",
         };
         const reason = (eligibility as { reason: string }).reason;
         return res.status(409).json({
@@ -2311,38 +2398,40 @@ async function startServer() {
 
       const generalScore = (qualityScore + (responseTimeScore ?? qualityScore) + (fulfillmentScore ?? qualityScore) + (communicationScore ?? qualityScore) + (valueScore ?? qualityScore)) / 5;
 
-      const review = await prisma.review.create({
-        data: {
-          providerId,
-          reviewerId: userId,
-          requestId,
-          qualityScore,
-          responseTimeScore: responseTimeScore ?? qualityScore,
-          fulfillmentScore: fulfillmentScore ?? qualityScore,
-          communicationScore: communicationScore ?? qualityScore,
-          valueScore: valueScore ?? qualityScore,
-          generalScore,
-          weight: reviewWeight,
-          comment,
-          analysis: {
-            create: {
-              sentimentScore: null,
-              qualitySignals: { verifiedRequest: true, bilateralCompletion: true },
-              moderationFlags: { suspicious: false },
-              generalScore,
-              algorithmVersion: "v1-route-basic",
+      const evidenceType = eligibility.route === "BILATERAL" ? 'BILATERAL_COMPLETION' : 'UNILATERAL_REVIEW_QUALIFIED';
+      const review = await prisma.$transaction(async (tx) => {
+        const created = await tx.review.create({
+          data: {
+            providerId,
+            reviewerId: userId,
+            requestId,
+            qualityScore,
+            responseTimeScore: responseTimeScore ?? qualityScore,
+            fulfillmentScore: fulfillmentScore ?? qualityScore,
+            communicationScore: communicationScore ?? qualityScore,
+            valueScore: valueScore ?? qualityScore,
+            generalScore,
+            weight: reviewWeight,
+            comment,
+            analysis: {
+              create: {
+                sentimentScore: null,
+                qualitySignals: { verifiedRequest: true, bilateralCompletion: eligibility.route === "BILATERAL" },
+                moderationFlags: { suspicious: false },
+                generalScore,
+                algorithmVersion: "v1-route-basic",
+              },
             },
           },
-        },
-        include: { reviewer: { select: { id: true, name: true, image: true } }, analysis: true },
-      });
-
-      const evidenceType = reviewWeight === 1.0 ? 'UNILATERAL_REVIEW_QUALIFIED' : 'UNILATERAL_REVIEW_QUALIFIED';
-      await createReputationEvidence(prisma, {
-        providerId,
-        requestId,
-        evidenceType,
-        evidenceWeight: reviewWeight,
+          include: { reviewer: { select: { id: true, name: true, image: true } }, analysis: true },
+        });
+        await createReputationEvidence(tx, {
+          providerId,
+          requestId,
+          evidenceType,
+          evidenceWeight: reviewWeight,
+        });
+        return created;
       });
 
       const reviewStats = await prisma.review.aggregate({
@@ -2366,7 +2455,11 @@ async function startServer() {
 
       await recalculateProviderTrustScore(providerId);
 
-      res.status(201).json({ success: true, data: review });
+      res.status(201).json({
+        success: true,
+        data: review,
+        editableUntil: new Date(review.createdAt.getTime() + 7 * 24 * 60 * 60 * 1000),
+      });
     } catch (error) {
       console.error("Create review error:", error);
       res.status(500).json({ success: false, error: "Error al crear reseña" });
@@ -2387,25 +2480,9 @@ async function startServer() {
         return res.status(403).json({ success: false, error: "Solo el autor puede editar esta reseña" });
       }
 
-      const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
-      if (Date.now() - review.createdAt.getTime() > SEVEN_DAYS_MS) {
+      if (!isReviewEditable(review.createdAt)) {
         return res.status(400).json({ success: false, error: "La reseña solo puede editarse durante los primeros 7 días" });
       }
-
-      await prisma.reviewHistory.create({
-        data: {
-          reviewId: review.id,
-          qualityScore: review.qualityScore,
-          responseTimeScore: review.responseTimeScore,
-          fulfillmentScore: review.fulfillmentScore,
-          communicationScore: review.communicationScore,
-          valueScore: review.valueScore,
-          generalScore: review.generalScore,
-          comment: review.comment,
-          editedByUserId: userId,
-          editedAt: new Date(),
-        },
-      });
 
       const merged = {
         qualityScore: parsed.data.qualityScore ?? review.qualityScore,
@@ -2417,15 +2494,57 @@ async function startServer() {
       };
       const generalScore = (merged.qualityScore + merged.responseTimeScore + merged.fulfillmentScore + merged.communicationScore + merged.valueScore) / 5;
 
-      const updated = await prisma.review.update({
-        where: { id: review.id },
-        data: { ...merged, generalScore, editedAt: new Date() },
-        include: { reviewer: { select: { id: true, name: true, image: true } }, analysis: true },
+      const evidenceType = review.weight === 1 ? 'BILATERAL_COMPLETION' : 'UNILATERAL_REVIEW_QUALIFIED';
+      const updated = await prisma.$transaction(async (tx) => {
+        await tx.reviewHistory.create({
+          data: {
+            reviewId: review.id,
+            qualityScore: review.qualityScore,
+            responseTimeScore: review.responseTimeScore,
+            fulfillmentScore: review.fulfillmentScore,
+            communicationScore: review.communicationScore,
+            valueScore: review.valueScore,
+            generalScore: review.generalScore,
+            comment: review.comment,
+            editedByUserId: userId,
+            editedAt: new Date(),
+          },
+        });
+
+        const updatedReview = await tx.review.update({
+          where: { id: review.id },
+          data: { ...merged, generalScore, editedAt: new Date() },
+          include: { reviewer: { select: { id: true, name: true, image: true } }, analysis: true },
+        });
+
+        const evidence = await tx.reputationEvent.findUnique({
+          where: { requestId_evidenceType: { requestId: review.requestId, evidenceType } },
+        });
+        if (!evidence) {
+          await createReputationEvidence(tx, {
+            providerId: review.providerId,
+            requestId: review.requestId,
+            evidenceType,
+            evidenceWeight: review.weight,
+            tx,
+          });
+        } else {
+          await tx.reputationEvent.update({
+            where: { id: evidence.id },
+            data: { evidenceWeight: review.weight },
+          });
+        }
+
+        return updatedReview;
       });
 
       await recalculateProviderTrustScore(review.providerId);
 
-      res.json({ success: true, data: updated });
+      res.json({
+        success: true,
+        data: updated,
+        editableUntil: new Date(review.createdAt.getTime() + 7 * 24 * 60 * 60 * 1000),
+      });
     } catch (error) {
       console.error("Update review error:", error);
       res.status(500).json({ success: false, error: "Error al editar reseña" });

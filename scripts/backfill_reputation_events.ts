@@ -62,7 +62,7 @@ async function backfillReputationEvents() {
   for (const review of reviews) {
     try {
       const evidenceType = review.weight >= 1.0 
-        ? 'UNILATERAL_REVIEW_QUALIFIED' 
+        ? 'BILATERAL_COMPLETION'
         : 'UNILATERAL_REVIEW_QUALIFIED';
 
       const result = await createReputationEvidence(prisma, {

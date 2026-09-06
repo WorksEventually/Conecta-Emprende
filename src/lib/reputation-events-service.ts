@@ -36,7 +36,7 @@ export interface EvidenceWeightsSummary {
 }
 
 export async function createReputationEvidence(
-  prisma: PrismaClient,
+  prisma: PrismaClient | Prisma.TransactionClient,
   params: CreateReputationEvidenceParams
 ): Promise<{ id: string; isNew: boolean }> {
   const {
@@ -207,6 +207,7 @@ export async function rebuildTrustScoreFromEvents(
       evidenceType: true,
       evidenceWeight: true,
       requestId: true,
+      request: { select: { senderId: true } },
     },
   });
 
@@ -226,8 +227,11 @@ export async function rebuildTrustScoreFromEvents(
       ratingQualityScore += ev.evidenceWeight;
     }
 
-    if (ev.requestId) {
-      uniqueRequesters.add(ev.requestId);
+    // Diversity is based on real bilateral completions, not request count.
+    // Qualified unilateral reviews carry rating weight only and must not
+    // advance completion maturity or requester diversity.
+    if (ev.evidenceType === 'BILATERAL_COMPLETION' && ev.request?.senderId) {
+      uniqueRequesters.add(ev.request.senderId);
     }
   }
 

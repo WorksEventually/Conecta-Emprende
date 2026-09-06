@@ -142,3 +142,11 @@ export const reviewUpdateSchema = z.object({
 }).refine(data => Object.keys(data).length > 0, {
   message: "Debe enviar al menos un campo a actualizar",
 });
+
+export const commercialInteractionSchema = z.object({
+  note: z.string().trim().min(1, "La nota es obligatoria").max(2000, "La nota no puede superar 2000 caracteres"),
+});
+
+export const privateFeedbackSchema = z.object({
+  note: z.string().trim().min(1, "El feedback es obligatorio").max(3000, "El feedback no puede superar 3000 caracteres"),
+});
