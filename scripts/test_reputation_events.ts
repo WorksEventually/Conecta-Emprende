@@ -257,6 +257,25 @@ async function test8_rebuildFromEvents() {
   console.log('✅ Test 8 passed');
 }
 
+async function test8b_unilateralDoesNotIncreaseDiversity() {
+  console.log('\n📝 Test 8b: Reseña 0.5 no incrementa diversidad');
+  const before = await rebuildTrustScoreFromEvents(prisma, testProviderId);
+  await createReputationEvidence(prisma, {
+    providerId: testProviderId,
+    requestId: testRequestId1,
+    evidenceType: 'UNILATERAL_REVIEW_QUALIFIED',
+    evidenceWeight: 0.5,
+  });
+  const after = await rebuildTrustScoreFromEvents(prisma, testProviderId);
+  if (
+    after.requesterDiversityScore !== before.requesterDiversityScore ||
+    after.completionHistoryScore !== before.completionHistoryScore
+  ) {
+    throw new Error('Unilateral evidence incorrectly changed completion maturity');
+  }
+  console.log('✅ Test 8b passed');
+}
+
 async function test9_evidenceWithoutRequest() {
   console.log('\n📝 Test 9: Evidencia sin requestId (ej. CONTACT_CONFIRMATION)');
 
@@ -316,12 +335,13 @@ async function runAllTests() {
     await test6_filterByType();
     await test7_calculateWeights();
     await test8_rebuildFromEvents();
+    await test8b_unilateralDoesNotIncreaseDiversity();
     await test9_evidenceWithoutRequest();
     await test10_uniqueConstraintViolation();
 
     await cleanupTestData();
 
-    console.log('\n✅ Todos los tests pasaron (10/10) ✅');
+    console.log('\n✅ Todos los tests pasaron (11/11) ✅');
   } catch (error) {
     console.error('\n❌ Test failed:', error);
     await cleanupTestData();

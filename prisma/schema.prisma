@@ -90,6 +90,8 @@ model User {
   resolvedRiskReports   RiskReport[]         @relation("RiskReportResolvedBy")
   requestEventActions   RequestEvent[]       @relation("RequestEventActions")
   invalidatedReputationEvents ReputationEvent[] @relation("ReputationEventInvalidator")
+  privateFeedbackAuthored   ProviderPrivateFeedback[] @relation("PrivateFeedbackAuthor")
+  privateFeedbackHistoryAuthored ProviderPrivateFeedbackHistory[] @relation("PrivateFeedbackHistoryAuthor")
 }
 
 model RoleAssignment {
@@ -285,6 +287,7 @@ model Provider {
   trustScoreSnapshots TrustScoreSnapshot[]
   riskReports         RiskReport[]
   reputationEvents    ReputationEvent[]
+  privateFeedback     ProviderPrivateFeedback[]
 
   @@index([city])
   @@index([cityId])
@@ -415,8 +418,8 @@ model Review {
   provider   Provider     @relation("Reviewee", fields: [providerId], references: [id])
   reviewerId String
   reviewer   User         @relation("Reviewer", fields: [reviewerId], references: [id])
-  requestId  String?
-  request    QuoteThread? @relation("RequestReviews", fields: [requestId], references: [id], onDelete: SetNull)
+  requestId  String
+  request    QuoteThread @relation("RequestReviews", fields: [requestId], references: [id], onDelete: Cascade)
 
   qualityScore       Int
   responseTimeScore  Int
@@ -694,6 +697,7 @@ model QuoteThread {
   reviews          Review[]            @relation("RequestReviews")
   requestEvents    RequestEvent[]
   reputationEvents ReputationEvent[]   @relation("RequestReputationEvents")
+  privateFeedback  ProviderPrivateFeedback?
   createdAt        DateTime            @default(now())
 
   @@index([senderId])
@@ -701,6 +705,36 @@ model QuoteThread {
   @@index([status])
   @@index([workflow_phase])
   @@index([completionDeadline])
+}
+
+model ProviderPrivateFeedback {
+  id          String      @id @default(cuid())
+  requestId   String      @unique
+  request     QuoteThread @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  providerId  String
+  provider    Provider    @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  authorId    String
+  author      User        @relation("PrivateFeedbackAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  history     ProviderPrivateFeedbackHistory[]
+  note        String      @db.Text
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  @@index([providerId])
+  @@index([authorId])
+}
+
+model ProviderPrivateFeedbackHistory {
+  id         String      @id @default(cuid())
+  feedbackId String
+  feedback   ProviderPrivateFeedback @relation(fields: [feedbackId], references: [id], onDelete: Cascade)
+  authorId   String
+  author     User        @relation("PrivateFeedbackHistoryAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  note       String      @db.Text
+  recordedAt DateTime    @default(now())
+
+  @@index([feedbackId, recordedAt])
+  @@index([authorId])
 }
 
 model QuoteOffer {
