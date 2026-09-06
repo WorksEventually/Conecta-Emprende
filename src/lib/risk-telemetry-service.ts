@@ -177,6 +177,9 @@ export async function analyzeProviderRisk(providerId: string): Promise<void> {
           where: { id: existingReport.id },
           data: {
             riskScore: riskResult.score,
+            riskLevel: riskResult.level,
+            penalty: riskResult.penalty,
+            algorithmVersion: "risk-v1.0.0",
             avgSearchTimeSeconds: metrics.avgSearchTimeSeconds,
             avgRequestToCompletionMinutes: metrics.avgRequestToCompletionMinutes,
             avgMessagesPerRequest: metrics.avgMessagesPerRequest,
@@ -189,6 +192,9 @@ export async function analyzeProviderRisk(providerId: string): Promise<void> {
           data: {
             providerId,
             riskScore: riskResult.score,
+            riskLevel: riskResult.level,
+            penalty: riskResult.penalty,
+            algorithmVersion: "risk-v1.0.0",
             avgSearchTimeSeconds: metrics.avgSearchTimeSeconds,
             avgRequestToCompletionMinutes: metrics.avgRequestToCompletionMinutes,
             avgMessagesPerRequest: metrics.avgMessagesPerRequest,

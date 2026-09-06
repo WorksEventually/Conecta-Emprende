@@ -512,6 +512,9 @@ model RiskReport {
   providerId                    String
   provider                      Provider  @relation(fields: [providerId], references: [id], onDelete: Cascade)
   riskScore                     Float
+  riskLevel                     String    @default("normal")
+  penalty                       Int       @default(0)
+  algorithmVersion              String    @default("risk-v1.0.0")
   suspiciousCyclesCount         Int       @default(0)
   avgSearchTimeSeconds          Float?
   avgRequestToCompletionMinutes Float?
@@ -532,6 +535,7 @@ model RiskReport {
   resolvedByUserId              String?
   resolvedBy                    User?     @relation("RiskReportResolvedBy", fields: [resolvedByUserId], references: [id], onDelete: SetNull)
   signalEvidence                RiskSignalEvidence[]
+  reputationEvents              ReputationEvent[]
 
   @@index([providerId])
   @@index([status])
@@ -845,6 +849,8 @@ model ReputationEvent {
   evidenceWeight       Float
   sourceEventId        String?
   sourceEvent          RequestEvent? @relation(fields: [sourceEventId], references: [id], onDelete: SetNull)
+  riskReportId         String?
+  riskReport           RiskReport?   @relation(fields: [riskReportId], references: [id], onDelete: SetNull)
   algorithmVersion     String        @default("trust-v2.0.0")
   invalidatedAt        DateTime?
   invalidatedByAdminId String?
@@ -857,6 +863,8 @@ model ReputationEvent {
   @@index([evidenceType])
   @@index([algorithmVersion])
   @@index([sourceEventId])
+  @@index([riskReportId])
+  @@unique([riskReportId, evidenceType])
 }
 
 // ──────────────────────────────────────────────────────────

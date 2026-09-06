@@ -1610,6 +1610,15 @@ async function startServer() {
         return res.status(400).json({ success: false, error: "Agregá una razón o nota para esta decisión" });
       }
 
+      const currentReport = await prisma.riskReport.findUnique({
+        where: { id: req.params.id },
+        select: { id: true, providerId: true, status: true, penalty: true },
+      });
+      if (!currentReport) return res.status(404).json({ success: false, error: "Reporte no encontrado" });
+      if (currentReport.status === "ACTION_TAKEN") {
+        return res.status(409).json({ success: false, error: "Este reporte ya tiene una acción confirmada" });
+      }
+
       const updateData: Record<string, unknown> = {
         status,
         reviewerNotes: reviewerNotes?.trim() || reason?.trim() || null,
@@ -1627,20 +1636,41 @@ async function startServer() {
         updateData.resolvedByUserId = userId;
       }
 
-      const report = await prisma.riskReport.update({
-        where: { id: req.params.id },
-        data: updateData,
-        include: riskReportInclude,
+      const report = await prisma.$transaction(async (tx) => {
+        const updatedReport = await tx.riskReport.update({
+          where: { id: req.params.id },
+          data: updateData,
+          include: riskReportInclude,
+        });
+
+        if (status === "ACTION_TAKEN" && currentReport.penalty > 0) {
+          await createReputationEvidence(tx, {
+            providerId: currentReport.providerId,
+            riskReportId: currentReport.id,
+            evidenceType: "PENALTY_SUSPICIOUS_ACTIVITY",
+            evidenceWeight: currentReport.penalty,
+            algorithmVersion: "trust-v2.0.0",
+            tx,
+          });
+        }
+
+        await tx.moderationAuditLog.create({
+          data: {
+            actorUserId: userId,
+            action: `REPORT_${status}`,
+            targetType: "RISK_REPORT",
+            targetId: updatedReport.id,
+            reason: reason?.trim() || reviewerNotes?.trim() || `Reporte marcado como ${status}`,
+            metadata: { providerId: updatedReport.providerId, status },
+          },
+        });
+
+        return updatedReport;
       });
 
-      await createModerationAuditLog({
-        actorUserId: userId,
-        action: `REPORT_${status}`,
-        targetType: "RISK_REPORT",
-        targetId: report.id,
-        reason: reason?.trim() || reviewerNotes?.trim() || `Reporte marcado como ${status}`,
-        metadata: { providerId: report.providerId, status },
-      });
+      if (status === "ACTION_TAKEN" && currentReport.penalty > 0) {
+        await recalculateProviderTrustScore(currentReport.providerId);
+      }
 
       res.json({ success: true, data: report });
     } catch (error) {
