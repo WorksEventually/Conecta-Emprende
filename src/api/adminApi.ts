@@ -14,7 +14,7 @@ export interface ModerationActionApproval {
   targetType: "PROVIDER";
   targetId: string;
   requestedByUserId: string;
-  requestedBy?: { id: string; name: string | null; email: string };
+  requestedBy?: { id: string; name: string | null };
   approvedByUserId: string | null;
   status: "PENDING" | "APPROVED" | "EXPIRED";
   reason: string;

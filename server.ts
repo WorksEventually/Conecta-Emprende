@@ -33,6 +33,8 @@ import {
   riskReportEscalateSchema,
   riskReportQuerySchema,
   riskReportStatusSchema,
+  moderationApprovalActionSchema,
+  moderationApprovalDecisionSchema,
 } from "./src/lib/api-schema";
 import {
   hashPassword,
@@ -1796,14 +1798,157 @@ async function startServer() {
     return updated;
   }
 
+  app.post("/api/admin/providers/:providerId/moderation-approvals", authenticate, requireAdminReviewerOrSuperAdmin, async (req, res) => {
+    try {
+      const parsed = moderationApprovalActionSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ success: false, error: "Los datos de aprobación son inválidos", details: parsed.error.issues });
+      }
+
+      const { userId } = req.user;
+      const provider = await prisma.provider.findUnique({
+        where: { id: req.params.providerId },
+        select: { id: true, status: true },
+      });
+      if (!provider) return res.status(404).json({ success: false, error: "Proveedor no encontrado" });
+
+      const targetStatus: ProviderStatus = parsed.data.action === "BAN" ? "BANNED" : "SUSPENDED";
+      if (!canTransition(provider.status, targetStatus)) {
+        return res.status(409).json({ success: false, error: "No se puede solicitar esta acción desde el estado actual del proveedor" });
+      }
+
+      const approval = await prisma.$transaction(async (tx) => {
+        const created = await tx.moderationActionApproval.create({
+          data: {
+            action: parsed.data.action,
+            targetType: "PROVIDER",
+            targetId: provider.id,
+            requestedByUserId: userId,
+            reason: parsed.data.reason,
+            suspendedUntil: parsed.data.suspendedUntil ? new Date(parsed.data.suspendedUntil) : null,
+            expiresAt: new Date(Date.now() + 15 * 60 * 1000),
+          },
+        });
+        await tx.moderationAuditLog.create({
+          data: {
+            actorUserId: userId,
+            action: "MODERATION_APPROVAL_REQUESTED",
+            targetType: "PROVIDER",
+            targetId: provider.id,
+            reason: parsed.data.reason,
+            metadata: { approvalId: created.id, action: parsed.data.action },
+          },
+        });
+        return created;
+      });
+
+      return res.status(202).json({
+        success: true,
+        message: "La acción requiere aprobación de un segundo administrador",
+        data: approval,
+      });
+    } catch (error) {
+      console.error("Request moderation approval error:", error);
+      res.status(500).json({ success: false, error: "Error al solicitar aprobación de moderación" });
+    }
+  });
+
+  app.get("/api/admin/moderation-approvals", authenticate, requireAdminReviewerOrSuperAdmin, async (_req, res) => {
+    try {
+      const approvals = await prisma.moderationActionApproval.findMany({
+        where: { status: "PENDING", expiresAt: { gt: new Date() } },
+        orderBy: { requestedAt: "asc" },
+        include: {
+          requestedBy: { select: { id: true, name: true } },
+        },
+      });
+      res.json({ success: true, data: approvals });
+    } catch (error) {
+      console.error("List moderation approvals error:", error);
+      res.status(500).json({ success: false, error: "Error al obtener aprobaciones pendientes" });
+    }
+  });
+
+  app.post("/api/admin/moderation-approvals/:approvalId/approve", authenticate, requireSuperAdmin, async (req, res) => {
+    try {
+      const parsed = moderationApprovalDecisionSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ success: false, error: "La aprobación no es válida", details: parsed.error.issues });
+
+      const { userId } = req.user;
+      const approval = await prisma.moderationActionApproval.findUnique({
+        where: { id: req.params.approvalId },
+      });
+      if (!approval) return res.status(404).json({ success: false, error: "Solicitud de aprobación no encontrada" });
+      if (approval.requestedByUserId === userId) {
+        return res.status(403).json({ success: false, error: "La persona que solicita la acción no puede aprobarla" });
+      }
+      if (approval.status !== "PENDING") {
+        return res.status(409).json({ success: false, error: "Esta solicitud de aprobación ya fue procesada" });
+      }
+      if (approval.expiresAt <= new Date()) {
+        await prisma.moderationActionApproval.update({ where: { id: approval.id }, data: { status: "EXPIRED" } });
+        return res.status(409).json({ success: false, error: "La solicitud de aprobación expiró" });
+      }
+
+      const targetStatus: ProviderStatus = approval.action === "BAN" ? "BANNED" : "SUSPENDED";
+      const result = await prisma.$transaction(async (tx) => {
+        const claimed = await tx.moderationActionApproval.updateMany({
+          where: {
+            id: approval.id,
+            status: "PENDING",
+            expiresAt: { gt: new Date() },
+            requestedByUserId: { not: userId },
+          },
+          data: { status: "APPROVED", approvedByUserId: userId, approvedAt: new Date() },
+        });
+        if (claimed.count !== 1) throw new Error("APPROVAL_ALREADY_PROCESSED");
+
+        const provider = await tx.provider.findUnique({
+          where: { id: approval.targetId },
+          select: { id: true, status: true },
+        });
+        if (!provider) throw new Error("PROVIDER_NOT_FOUND");
+        if (!canTransition(provider.status, targetStatus)) throw new Error("INVALID_TRANSITION");
+
+        const updated = await tx.provider.update({
+          where: { id: provider.id },
+          data: {
+            status: targetStatus,
+            statusReason: approval.reason,
+            suspendedUntil: targetStatus === "SUSPENDED" ? approval.suspendedUntil : null,
+            statusUpdatedAt: new Date(),
+            statusUpdatedById: userId,
+          },
+        });
+        await tx.moderationAuditLog.create({
+          data: {
+            actorUserId: userId,
+            action: targetStatus === "BANNED" ? "PROVIDER_BANNED_APPROVED" : "PROVIDER_SUSPENDED_APPROVED",
+            targetType: "PROVIDER",
+            targetId: provider.id,
+            reason: approval.reason,
+            metadata: { approvalId: approval.id, requestedByUserId: approval.requestedByUserId },
+          },
+        });
+        return updated;
+      });
+
+      return res.json({ success: true, data: result });
+    } catch (error) {
+      const message = (error as Error).message;
+      if (message === "APPROVAL_ALREADY_PROCESSED") return res.status(409).json({ success: false, error: "Esta solicitud de aprobación ya fue procesada" });
+      if (message === "PROVIDER_NOT_FOUND") return res.status(404).json({ success: false, error: "Proveedor no encontrado" });
+      if (message === "INVALID_TRANSITION") return res.status(409).json({ success: false, error: "No se puede ejecutar la acción desde el estado actual del proveedor" });
+      console.error("Approve moderation error:", error);
+      res.status(500).json({ success: false, error: "Error al aprobar la acción de moderación" });
+    }
+  });
+
   app.post("/api/admin/providers/:providerId/suspend", authenticate, requireSuperAdmin, async (req, res) => {
     try {
       const parsed = providerSuspendSchema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ success: false, error: "Los datos de suspensión son inválidos", details: parsed.error.issues });
-      const { userId } = req.user;
-      const { reason, suspendedUntil } = parsed.data;
-      const provider = await updateProviderModerationStatus(req.params.providerId, userId, "SUSPENDED", reason, suspendedUntil || null);
-      res.json({ success: true, data: provider });
+      return res.status(409).json({ success: false, error: "La suspensión requiere aprobación de un segundo administrador" });
     } catch (error) {
       const msg = (error as Error).message;
       if (msg === "PROVIDER_NOT_FOUND") return res.status(404).json({ success: false, error: "Proveedor no encontrado" });
@@ -1817,9 +1962,7 @@ async function startServer() {
     try {
       const parsed = providerModerationReasonSchema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ success: false, error: "El baneo requiere una razón", details: parsed.error.issues });
-      const { userId } = req.user;
-      const provider = await updateProviderModerationStatus(req.params.providerId, userId, "BANNED", parsed.data.reason);
-      res.json({ success: true, data: provider });
+      return res.status(409).json({ success: false, error: "El baneo requiere aprobación de un segundo administrador" });
     } catch (error) {
       const msg = (error as Error).message;
       if (msg === "PROVIDER_NOT_FOUND") return res.status(404).json({ success: false, error: "Proveedor no encontrado" });
