@@ -12,6 +12,7 @@ const TEST_SUITES: TestSuite[] = [
   { name: "Admin Permissions", command: "test:admin-permissions", category: "smoke" },
   { name: "Sprint 2 E2E", command: "test:sprint-e2e", category: "e2e" },
   { name: "Risk Integration", command: "test:risk-integration", category: "e2e" },
+  { name: "Sprint 9 Risk", command: "test:sprint9-risk", category: "e2e" },
 ];
 
 type SuiteResult = {
