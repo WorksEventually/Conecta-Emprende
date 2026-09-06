@@ -8,6 +8,22 @@ async function adminRequest<T>(path: string, init?: RequestInit): Promise<T> {
 
 export type AdminRiskReportStatus = "OPEN" | "UNDER_REVIEW" | "DISMISSED" | "ESCALATED" | "ACTION_TAKEN";
 
+export interface ModerationActionApproval {
+  id: string;
+  action: "SUSPEND" | "BAN";
+  targetType: "PROVIDER";
+  targetId: string;
+  requestedByUserId: string;
+  requestedBy?: { id: string; name: string | null; email: string };
+  approvedByUserId: string | null;
+  status: "PENDING" | "APPROVED" | "EXPIRED";
+  reason: string;
+  suspendedUntil: string | null;
+  requestedAt: string;
+  approvedAt: string | null;
+  expiresAt: string;
+}
+
 export interface AdminRiskReport {
   id: string;
   providerId: string;
@@ -118,6 +134,17 @@ export const adminApi = {
       method: "POST",
       body: JSON.stringify({ reason }),
     }),
+  requestModerationApproval: (providerId: string, data: { action: "SUSPEND" | "BAN"; reason: string; suspendedUntil?: string }) =>
+    adminRequest<ModerationActionApproval>(`/api/admin/providers/${encodeURIComponent(providerId)}/moderation-approvals`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  approveModerationAction: (approvalId: string) =>
+    adminRequest(`/api/admin/moderation-approvals/${encodeURIComponent(approvalId)}/approve`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    }),
+  getModerationApprovals: () => adminRequest<ModerationActionApproval[]>("/api/admin/moderation-approvals"),
   reactivateProvider: (providerId: string, reason: string) =>
     adminRequest(`/api/admin/providers/${encodeURIComponent(providerId)}/reactivate`, {
       method: "POST",

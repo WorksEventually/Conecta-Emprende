@@ -163,6 +163,7 @@ async function buildContext(): Promise<TestContext> {
 
 async function cleanup(providerId: string): Promise<void> {
   console.log("\n-> Cleanup");
+  await prisma.moderationActionApproval.deleteMany({ where: { targetType: "PROVIDER", targetId: providerId } });
   try {
     await prisma.riskReport.deleteMany({ where: { providerId } });
   } catch {
@@ -288,10 +289,19 @@ async function runAll(ctx: TestContext): Promise<void> {
     });
   });
 
-  test("SUPER_ADMIN suspend with reason -> 200", async () => {
-    const r = await apiRequest("POST", `/api/admin/providers/${PROVIDER_ID}/suspend`, superCookie, {
+  test("ADMIN_REVIEWER requests suspension approval -> 202", async () => {
+    const r = await apiRequest("POST", `/api/admin/providers/${PROVIDER_ID}/moderation-approvals`, adminCookie, {
+      action: "SUSPEND",
       reason: "Test suspend by SUPER_ADMIN",
     });
+    assert.equal(r.status, 202, `Expected 202, got ${r.status}: ${r.body?.error}`);
+    assert.ok(r.body?.data?.id, "Approval id should be returned");
+    (ctx as any).suspensionApprovalId = r.body.data.id;
+  });
+
+  test("SUPER_ADMIN approves suspension -> 200", async () => {
+    const approvalId = (ctx as any).suspensionApprovalId;
+    const r = await apiRequest("POST", `/api/admin/moderation-approvals/${approvalId}/approve`, superCookie, {});
     assert.equal(r.status, 200, `Expected 200, got ${r.status}: ${r.body?.error}`);
     const db = await prisma.provider.findUnique({ where: { id: PROVIDER_ID }, select: { status: true, statusReason: true } });
     assert.equal(db?.status, "SUSPENDED");
@@ -307,10 +317,18 @@ async function runAll(ctx: TestContext): Promise<void> {
     assert.equal(db?.status, "ACTIVE");
   });
 
-  test("SUPER_ADMIN ban with reason -> 200", async () => {
-    const r = await apiRequest("POST", `/api/admin/providers/${PROVIDER_ID}/ban`, superCookie, {
+  test("ADMIN_REVIEWER requests ban approval -> 202", async () => {
+    const r = await apiRequest("POST", `/api/admin/providers/${PROVIDER_ID}/moderation-approvals`, adminCookie, {
+      action: "BAN",
       reason: "Test ban by SUPER_ADMIN (test provider)",
     });
+    assert.equal(r.status, 202, `Expected 202, got ${r.status}: ${r.body?.error}`);
+    (ctx as any).banApprovalId = r.body.data.id;
+  });
+
+  test("SUPER_ADMIN approves ban -> 200", async () => {
+    const approvalId = (ctx as any).banApprovalId;
+    const r = await apiRequest("POST", `/api/admin/moderation-approvals/${approvalId}/approve`, superCookie, {});
     assert.equal(r.status, 200, `Expected 200, got ${r.status}: ${r.body?.error}`);
     const db = await prisma.provider.findUnique({ where: { id: PROVIDER_ID }, select: { status: true, statusReason: true } });
     assert.equal(db?.status, "BANNED");
@@ -368,17 +386,20 @@ async function runAll(ctx: TestContext): Promise<void> {
       },
     });
     try {
-      const susp = await apiRequest("POST", `/api/admin/providers/${temp.id}/suspend`, superCookie, {
+      const request = await apiRequest("POST", `/api/admin/providers/${temp.id}/moderation-approvals`, adminCookie, {
+        action: "SUSPEND",
         reason: "Audit log verification test",
       });
-      assert.equal(susp.status, 200, "Suspend should succeed");
+      assert.equal(request.status, 202, "Approval request should succeed");
+      const susp = await apiRequest("POST", `/api/admin/moderation-approvals/${request.body.data.id}/approve`, superCookie, {});
+      assert.equal(susp.status, 200, "Approved suspend should succeed");
       const logRes = await apiRequest("GET", "/api/admin/audit-log", superCookie);
       assert.equal(logRes.status, 200, "Audit log GET should succeed");
       const logs: any[] = logRes.body?.data ?? [];
       const entry = logs.find(
-        (l: any) => l.action === "PROVIDER_SUSPENDED" && l.targetId === temp.id && l.actorUserId === superUserId,
+       (l: any) => l.action === "PROVIDER_SUSPENDED_APPROVED" && l.targetId === temp.id && l.actorUserId === superUserId,
       );
-      assert.ok(entry, "Should find PROVIDER_SUSPENDED audit log entry for superUserId");
+      assert.ok(entry, "Should find approved suspension audit log entry for superUserId");
       assert.ok(entry.reason?.trim(), "Audit reason should be non-empty");
       assert.equal(entry.targetType, "PROVIDER");
     } finally {
