@@ -1,0 +1,381 @@
+﻿<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>TradeArc Â· UML de casos de uso</title>
+<style>
+  :root{--bg:#0f1115;--panel:#171a21;--line:#262b36;--txt:#e7eaf0;--muted:#9aa3b2;--accent:#2f9e73}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--txt);font:15px/1.55 "Segoe UI",system-ui,-apple-system,sans-serif}
+  header{padding:22px 28px 16px;border-bottom:1px solid var(--line)}
+  h1{margin:0 0 4px;font-size:21px;font-weight:650}
+  .sub{color:var(--muted);font-size:13.5px}
+  .sub code{background:#1d2129;padding:1px 6px;border-radius:4px;font-size:12.5px}
+  .back{color:#6cf;text-decoration:none;font-size:13px}
+  nav{display:flex;flex-wrap:wrap;gap:8px;padding:16px 28px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--bg);z-index:10}
+  button{font:inherit;font-size:13.5px;cursor:pointer;border-radius:7px;border:1px solid var(--line);background:var(--panel);color:var(--txt);padding:7px 13px}
+  button:hover{border-color:#3a4150}
+  button.tab.active{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+  .tools{margin-left:auto;display:flex;gap:8px;align-items:center}
+  .zoom{display:inline-flex;align-items:center;gap:6px;color:var(--muted);font-size:13px}
+  main{padding:20px 28px 60px}
+  .meta{color:var(--muted);font-size:13px;margin:0 0 14px;max-width:120ch}
+  .meta b{color:var(--txt);font-weight:600}
+  #stage{background:#fbfcfd;border:1px solid var(--line);border-radius:10px;padding:18px;overflow:auto;min-height:60vh}
+  #stage svg{max-width:none;height:auto}
+  .legend{display:flex;flex-wrap:wrap;gap:18px;margin:16px 0 0;padding:14px 16px;background:var(--panel);border:1px solid var(--line);border-radius:10px;font-size:13px;color:var(--muted)}
+  .legend code{color:var(--txt);background:#1d2129;padding:1px 6px;border-radius:4px}
+  .err{background:#2a1618;border:1px solid #5b2a2f;color:#ffb4b4;padding:14px;border-radius:8px;white-space:pre-wrap;font-family:Consolas,monospace;font-size:13px}
+</style>
+</head>
+<body>
+<header>
+  <h1>TradeArc Â· Diagrama UML de casos de uso</h1>
+  <div class="sub">
+    63 casos de uso derivados de los 52 endpoints de <code>server.ts</code> y sus guards de rol Â·
+    <a class="back" href="./">volver al portal</a>
+  </div>
+</header>
+
+<nav>
+  <button class="tab active" data-d="actores">JerarquÃ­a de actores</button>
+  <button class="tab" data-d="general">Vista general por paquetes</button>
+  <button class="tab" data-d="acceso">1-3 Â· Acceso, descubrimiento y perfil</button>
+  <button class="tab" data-d="solicitudes">4-5 Â· Solicitudes y reputaciÃ³n</button>
+  <button class="tab" data-d="admin">6-7 Â· ModeraciÃ³n y sistema</button>
+  <div class="tools">
+    <span class="zoom"><button id="out">&minus;</button><span id="lvl">100%</span><button id="in">+</button></span>
+    <button id="svg">SVG</button>
+    <button id="png">PNG</button>
+  </div>
+</nav>
+
+<main>
+  <p class="meta" id="meta"></p>
+  <div id="stage">Renderizandoâ€¦</div>
+  <div class="legend">
+    <div><code>Â«includeÂ»</code> comportamiento obligatorio invocado por el caso base</div>
+    <div><code>Â«extendÂ»</code> comportamiento opcional</div>
+    <div><code>â–·</code> generalizaciÃ³n de actor, hereda permisos</div>
+    <div>Actor humano en azul Â· actor sistema en Ã¡mbar Â· caso de uso en verde</div>
+  </div>
+</main>
+
+<script type="text/plain" id="src-actores">
+flowchart TB
+    classDef actor fill:#e8f1ff,stroke:#2c5f9e,stroke-width:1.5px,color:#12263f
+    classDef sys fill:#fff4e6,stroke:#c98a2e,stroke-width:1.5px,color:#3d2a09
+    classDef nota fill:#f6f7f9,stroke:#aab3c0,color:#2a3242,stroke-dasharray:4 3
+
+    V(["Visitante anonimo"]):::actor
+    C(["Cliente solicitante"]):::actor
+    P(["Proveedor"]):::actor
+    AD(["Admin"]):::actor
+    AR(["Admin revisor"]):::actor
+    SA(["Super admin"]):::actor
+
+    SYS(["Sistema programado, node-cron"]):::sys
+    IA(["Gemini, servicio de IA"]):::sys
+    GO(["Google OAuth"]):::sys
+
+    C -->|"generalizacion"| V
+    P -->|"generalizacion"| C
+    AR -->|"generalizacion"| AD
+    SA -->|"generalizacion"| AR
+
+    N1["Un usuario autenticado puede crear varios perfiles de negocio, por eso Proveedor hereda de Cliente"]:::nota
+    N2["El rol efectivo se resuelve uniendo User.role con RoleAssignment en getUserSystemRoles"]:::nota
+    N3["Solo SUPER_ADMIN puede suspender, banear, restringir o reactivar y leer la bitacora completa"]:::nota
+
+    P --- N1
+    AD --- N2
+    SA --- N3
+</script>
+
+<script type="text/plain" id="src-general">
+flowchart LR
+    classDef actor fill:#e8f1ff,stroke:#2c5f9e,stroke-width:1.5px,color:#12263f
+    classDef sys fill:#fff4e6,stroke:#c98a2e,stroke-width:1.5px,color:#3d2a09
+    classDef pk fill:#eefaf3,stroke:#2f9e73,color:#0f2f22
+
+    V(["Visitante"]):::actor
+    C(["Cliente"]):::actor
+    P(["Proveedor"]):::actor
+    AD(["Admin"]):::actor
+    SA(["Super admin"]):::actor
+    SYS(["Sistema programado"]):::sys
+    IA(["Gemini IA"]):::sys
+    GO(["Google OAuth"]):::sys
+
+    PK1["Paquete 1, Acceso e identidad, UC-01 a UC-06"]:::pk
+    PK2["Paquete 2, Descubrimiento y busqueda, UC-07 a UC-14"]:::pk
+    PK3["Paquete 3, Perfil y catalogo del proveedor, UC-15 a UC-23"]:::pk
+    PK4["Paquete 4, Solicitudes y cotizacion, UC-24 a UC-37"]:::pk
+    PK5["Paquete 5, Reputacion y confianza, UC-38 a UC-45"]:::pk
+    PK6["Paquete 6, Moderacion y administracion, UC-46 a UC-59"]:::pk
+    PK7["Paquete 7, Procesos automaticos, UC-60 a UC-63"]:::pk
+
+    V --- PK1
+    V --- PK2
+    C --- PK4
+    C --- PK5
+    P --- PK3
+    P --- PK4
+    P --- PK5
+    AD --- PK6
+    SA --- PK6
+    SYS --- PK7
+    PK1 -.->|"Â«includeÂ»"| GO
+    PK2 -.->|"Â«includeÂ»"| IA
+    PK3 -.->|"Â«extendÂ»"| IA
+    PK4 -.->|"Â«extendÂ»"| IA
+    PK5 -.->|"Â«includeÂ»"| PK7
+</script>
+
+<script type="text/plain" id="src-acceso">
+flowchart LR
+    classDef actor fill:#e8f1ff,stroke:#2c5f9e,stroke-width:1.5px,color:#12263f
+    classDef sys fill:#fff4e6,stroke:#c98a2e,stroke-width:1.5px,color:#3d2a09
+    classDef uc fill:#eefaf3,stroke:#2f9e73,color:#0f2f22
+
+    V(["Visitante"]):::actor
+    C(["Cliente"]):::actor
+    P(["Proveedor"]):::actor
+    GO(["Google OAuth"]):::sys
+    IA(["Gemini IA"]):::sys
+
+    subgraph PK1["Paquete 1 Â· Acceso e identidad"]
+        UC01("UC-01 Registrarse"):::uc
+        UC02("UC-02 Iniciar sesion con correo"):::uc
+        UC03("UC-03 Iniciar sesion con Google"):::uc
+        UC04("UC-04 Cerrar sesion"):::uc
+        UC05("UC-05 Renovar sesion con refresh token"):::uc
+        UC06("UC-06 Consultar sesion actual"):::uc
+    end
+
+    subgraph PK2["Paquete 2 Â· Descubrimiento"]
+        UC07("UC-07 Buscar proveedores con filtros"):::uc
+        UC08("UC-08 Buscar en lenguaje natural"):::uc
+        UC09("UC-09 Interpretar intencion del texto"):::uc
+        UC10("UC-10 Ordenar resultados por relevancia"):::uc
+        UC11("UC-11 Ver perfil publico de proveedor"):::uc
+        UC12("UC-12 Ver confianza publica"):::uc
+        UC13("UC-13 Ver resenas del proveedor"):::uc
+        UC14("UC-14 Ver item del catalogo"):::uc
+    end
+
+    subgraph PK3["Paquete 3 Â· Perfil y catalogo"]
+        UC15("UC-15 Crear perfil de negocio"):::uc
+        UC16("UC-16 Promover cuenta a PROVIDER"):::uc
+        UC17("UC-17 Redactar biografia con IA"):::uc
+        UC18("UC-18 Editar perfil"):::uc
+        UC19("UC-19 Publicar perfil"):::uc
+        UC20("UC-20 Validar requisitos de publicacion"):::uc
+        UC21("UC-21 Crear item de catalogo"):::uc
+        UC22("UC-22 Editar item de catalogo"):::uc
+        UC23("UC-23 Eliminar item de catalogo"):::uc
+    end
+
+    V --- UC01
+    V --- UC02
+    V --- UC03
+    V --- UC07
+    V --- UC08
+    V --- UC11
+    V --- UC12
+    V --- UC13
+    V --- UC14
+    C --- UC04
+    C --- UC05
+    C --- UC06
+    C --- UC15
+    P --- UC17
+    P --- UC18
+    P --- UC19
+    P --- UC21
+    P --- UC22
+    P --- UC23
+
+    UC03 -.->|"Â«includeÂ»"| GO
+    UC08 -.->|"Â«includeÂ»"| UC09
+    UC08 -.->|"Â«includeÂ»"| UC10
+    UC09 -.->|"Â«includeÂ»"| IA
+    UC10 -.->|"Â«includeÂ»"| IA
+    UC15 -.->|"Â«includeÂ»"| UC16
+    UC17 -.->|"Â«includeÂ»"| IA
+    UC19 -.->|"Â«includeÂ»"| UC20
+</script>
+
+<script type="text/plain" id="src-solicitudes">
+flowchart LR
+    classDef actor fill:#e8f1ff,stroke:#2c5f9e,stroke-width:1.5px,color:#12263f
+    classDef sys fill:#fff4e6,stroke:#c98a2e,stroke-width:1.5px,color:#3d2a09
+    classDef uc fill:#eefaf3,stroke:#2f9e73,color:#0f2f22
+
+    C(["Cliente"]):::actor
+    P(["Proveedor"]):::actor
+    AD(["Admin revisor"]):::actor
+    IA(["Gemini IA"]):::sys
+    SYS(["Sistema programado"]):::sys
+
+    subgraph PK4["Paquete 4 Â· Solicitudes y cotizacion"]
+        UC24("UC-24 Crear solicitud de cotizacion"):::uc
+        UC25("UC-25 Validar que el proveedor puede recibir"):::uc
+        UC26("UC-26 Redactar solicitud con IA"):::uc
+        UC27("UC-27 Listar mis solicitudes"):::uc
+        UC28("UC-28 Ver detalle de solicitud"):::uc
+        UC29("UC-29 Enviar mensaje en la conversacion"):::uc
+        UC30("UC-30 Enviar o actualizar cotizacion"):::uc
+        UC31("UC-31 Aceptar la cotizacion"):::uc
+        UC32("UC-32 Declinar solicitud sin interaccion"):::uc
+        UC33("UC-33 Solicitar cierre del trabajo"):::uc
+        UC34("UC-34 Confirmar cierre bilateral"):::uc
+        UC35("UC-35 Registrar evidencia de reputacion"):::uc
+        UC36("UC-36 Rechazar el cierre propuesto"):::uc
+        UC37("UC-37 Retirar la solicitud de cierre"):::uc
+    end
+
+    subgraph PK5["Paquete 5 Â· Reputacion y confianza"]
+        UC38("UC-38 Consultar elegibilidad de resena"):::uc
+        UC39("UC-39 Publicar resena verificada"):::uc
+        UC40("UC-40 Validar elegibilidad y peso"):::uc
+        UC41("UC-41 Recalcular confianza del proveedor"):::uc
+        UC42("UC-42 Editar resena dentro de 7 dias"):::uc
+        UC43("UC-43 Versionar resena editada"):::uc
+        UC44("UC-44 Registrar feedback privado"):::uc
+        UC45("UC-45 Consultar feedback privado"):::uc
+    end
+
+    C --- UC24
+    C --- UC27
+    C --- UC28
+    C --- UC29
+    C --- UC31
+    C --- UC33
+    C --- UC36
+    C --- UC37
+    C --- UC38
+    C --- UC39
+    C --- UC42
+    P --- UC27
+    P --- UC28
+    P --- UC29
+    P --- UC30
+    P --- UC32
+    P --- UC33
+    P --- UC44
+    P --- UC45
+    AD --- UC45
+
+    UC24 -.->|"Â«includeÂ»"| UC25
+    UC24 -.->|"Â«extendÂ»"| UC26
+    UC26 -.->|"Â«includeÂ»"| IA
+    UC33 -.->|"Â«includeÂ»"| UC34
+    UC34 -.->|"Â«includeÂ»"| UC35
+    UC39 -.->|"Â«includeÂ»"| UC40
+    UC39 -.->|"Â«includeÂ»"| UC41
+    UC39 -.->|"Â«includeÂ»"| UC35
+    UC42 -.->|"Â«includeÂ»"| UC43
+    UC42 -.->|"Â«includeÂ»"| UC41
+    SYS --- UC34
+</script>
+
+<script type="text/plain" id="src-admin">
+flowchart LR
+    classDef actor fill:#e8f1ff,stroke:#2c5f9e,stroke-width:1.5px,color:#12263f
+    classDef sys fill:#fff4e6,stroke:#c98a2e,stroke-width:1.5px,color:#3d2a09
+    classDef uc fill:#eefaf3,stroke:#2f9e73,color:#0f2f22
+    classDef ucsa fill:#fdecec,stroke:#c0504d,color:#4a1210
+
+    AD(["Admin"]):::actor
+    AR(["Admin revisor"]):::actor
+    SA(["Super admin"]):::actor
+    SYS(["Sistema programado, cada 10 min"]):::sys
+
+    subgraph PK6["Paquete 6 Â· Moderacion y administracion"]
+        UC46("UC-46 Listar reportes de riesgo"):::uc
+        UC47("UC-47 Ver detalle de reporte"):::uc
+        UC48("UC-48 Cambiar estado del reporte"):::uc
+        UC49("UC-49 Escalar reporte"):::uc
+        UC50("UC-50 Inactivar proveedor"):::uc
+        UC51("UC-51 Suspender proveedor"):::ucsa
+        UC52("UC-52 Banear proveedor"):::ucsa
+        UC53("UC-53 Reactivar proveedor"):::ucsa
+        UC54("UC-54 Restringir proveedor temporalmente"):::ucsa
+        UC55("UC-55 Consultar bitacora de auditoria"):::ucsa
+        UC56("UC-56 Auditar ledger de eventos"):::uc
+        UC57("UC-57 Confirmar interaccion comercial"):::uc
+        UC58("UC-58 Resolver expiradas manualmente"):::ucsa
+        UC59("UC-59 Registrar accion en bitacora"):::uc
+    end
+
+    subgraph PK7["Paquete 7 Â· Procesos automaticos"]
+        UC60("UC-60 Resolver solicitudes expiradas"):::uc
+        UC61("UC-61 Cerrar por vencimiento de 72 horas"):::uc
+        UC62("UC-62 Analizar riesgo del proveedor"):::uc
+        UC63("UC-63 Limpiar claves de idempotencia"):::uc
+    end
+
+    AD --- UC46
+    AD --- UC47
+    AD --- UC48
+    AD --- UC49
+    AD --- UC50
+    AD --- UC56
+    AD --- UC57
+    AR --- UC46
+    AR --- UC50
+    SA --- UC51
+    SA --- UC52
+    SA --- UC53
+    SA --- UC54
+    SA --- UC55
+    SA --- UC58
+    SYS --- UC60
+    SYS --- UC63
+
+    UC48 -.->|"Â«includeÂ»"| UC59
+    UC49 -.->|"Â«includeÂ»"| UC59
+    UC50 -.->|"Â«includeÂ»"| UC59
+    UC51 -.->|"Â«includeÂ»"| UC59
+    UC52 -.->|"Â«includeÂ»"| UC59
+    UC53 -.->|"Â«includeÂ»"| UC59
+    UC54 -.->|"Â«includeÂ»"| UC59
+    UC57 -.->|"Â«includeÂ»"| UC59
+    UC58 -.->|"Â«includeÂ»"| UC60
+    UC60 -.->|"Â«includeÂ»"| UC61
+    UC61 -.->|"Â«extendÂ»"| UC62
+</script>
+
+<script type="module">
+import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+mermaid.initialize({startOnLoad:false,theme:'base',themeVariables:{primaryColor:'#eef4ff',primaryBorderColor:'#3b6ea8',primaryTextColor:'#12263f',lineColor:'#5b6b80',fontSize:'13px',fontFamily:'Segoe UI, system-ui, sans-serif'},flowchart:{useMaxWidth:false,htmlLabels:true,nodeSpacing:45,rankSpacing:60}});
+
+const META = {
+  actores: 'Los seis actores humanos y los tres sistemas externos. Las flechas de generalizacion reflejan herencia de permisos real del backend: <b>Proveedor</b> hereda de <b>Cliente</b> porque crear un perfil no quita la capacidad de solicitar, y <b>Super admin</b> acumula todo lo de <b>Admin revisor</b> mas las acciones exclusivas de suspension, baneo y bitacora.',
+  general: 'Los 63 casos de uso agrupados en 7 paquetes funcionales, con los actores que los inician y los sistemas externos que participan. Vista de conjunto para ubicar el alcance completo antes de entrar al detalle.',
+  acceso: 'Paquetes 1 a 3. Incluye la autenticacion propia y por Google, el descubrimiento publico sin sesion, y el ciclo de vida del perfil de proveedor. <b>UC-16</b> es la promocion automatica de la cuenta a rol PROVIDER al crear el primer negocio, y <b>UC-20</b> son las validaciones que bloquean publicar un perfil incompleto.',
+  solicitudes: 'Paquetes 4 y 5, el nucleo del producto. La cadena <b>UC-33 a UC-34 a UC-35</b> es la que convierte un cierre bilateral en evidencia reputacional con peso 1.0. El <b>Sistema programado</b> tambien participa en UC-34 porque puede cerrar por vencimiento sin intervencion humana.',
+  admin: 'Paquetes 6 y 7. Los casos en rojo son exclusivos de <b>SUPER_ADMIN</b>. Toda accion de moderacion incluye <b>UC-59</b>, el registro en bitacora con motivo obligatorio, asi que no existe accion administrativa sin rastro.'
+};
+
+const stage=document.getElementById('stage'),meta=document.getElementById('meta'),lvl=document.getElementById('lvl');
+let current='actores',zoom=1;
+function applyZoom(){const s=stage.querySelector('svg');if(!s)return;s.style.transformOrigin='0 0';s.style.transform=`scale(${zoom})`;lvl.textContent=Math.round(zoom*100)+'%';}
+async function draw(k){current=k;meta.innerHTML=META[k]||'';const code=document.getElementById('src-'+k).textContent.trim();stage.textContent='Renderizandoâ€¦';
+ try{const{svg}=await mermaid.render('g-'+k+'-'+Date.now(),code);stage.innerHTML=svg;zoom=1;applyZoom();}
+ catch(e){stage.innerHTML='<div class="err">No se pudo renderizar.\n\n'+String(e&&e.message?e.message:e).replace(/[<>&]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]))+'\n\nMermaid se carga desde CDN, revisa la conexion.</div>';}}
+document.querySelectorAll('.tab').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));b.classList.add('active');draw(b.dataset.d);}));
+document.getElementById('in').onclick=()=>{zoom=Math.min(zoom+0.15,3);applyZoom();};
+document.getElementById('out').onclick=()=>{zoom=Math.max(zoom-0.15,0.3);applyZoom();};
+function svgStr(){const s=stage.querySelector('svg');if(!s)return null;const c=s.cloneNode(true);c.style.transform='';c.setAttribute('xmlns','http://www.w3.org/2000/svg');return new XMLSerializer().serializeToString(c);}
+document.getElementById('svg').onclick=()=>{const s=svgStr();if(!s)return;const u=URL.createObjectURL(new Blob([s],{type:'image/svg+xml'}));const a=document.createElement('a');a.href=u;a.download='tradearc-casos-de-uso-'+current+'.svg';a.click();URL.revokeObjectURL(u);};
+document.getElementById('png').onclick=()=>{const el=stage.querySelector('svg'),s=svgStr();if(!s||!el)return;const b=el.getBoundingClientRect(),k=2;
+ const w=Math.ceil((el.viewBox.baseVal.width||b.width/zoom)*k),h=Math.ceil((el.viewBox.baseVal.height||b.height/zoom)*k);
+ const img=document.createElement("img");img.onload=()=>{const c=document.createElement('canvas');c.width=w;c.height=h;const x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,w,h);x.drawImage(img,0,0,w,h);const a=document.createElement('a');a.href=c.toDataURL('image/png');a.download='tradearc-casos-de-uso-'+current+'.png';a.click();};
+ img.src='data:image/svg+xml;base64,'+btoa(unescape(encodeURIComponent(s)));};
+draw('actores');
+</script>
+</body>
+</html>
