@@ -44,7 +44,7 @@
 <header>
   <h1>TradeArc · Diagrama relacional de la base de datos</h1>
   <div class="sub">
-    Modelo normalizado en 3FN · PostgreSQL 15 · 38 tablas, 10 enums ·
+    Modelo normalizado en 3FN · PostgreSQL 15 · 40 tablas, 10 enums ·
     derivado de <code>prisma/schema.prisma</code>
   </div>
 </header>
@@ -96,7 +96,9 @@ erDiagram
     User ||--o{ Provider : "es dueño de"
     User ||--o{ QuoteThread : "solicita como cliente"
     User ||--o{ Review : "redacta"
-    User ||--o{ ModerationAuditLog : "actua en"
+    User |o--o{ ModerationAuditLog : "actua en"
+    User ||--o{ ModerationActionApproval : "solicita accion"
+    User |o--o{ ModerationActionApproval : "aprueba accion"
     User |o--o{ RequestEvent : "origina"
     User |o--o{ RiskReport : "revisa o escala o resuelve"
     User |o--o{ ReputationEvent : "invalida"
@@ -127,6 +129,9 @@ erDiagram
     Provider ||--o{ RiskReport : "es analizado en"
     Provider ||--o{ ReputationEvent : "acumula evidencia"
     Provider ||--o{ ProviderPrivateFeedback : "recibe privado"
+    Provider ||--o{ RiskSignalEvidence : "acumula señales"
+    RiskReport |o--o{ RiskSignalEvidence : "respalda"
+    RiskReport |o--o{ ModerationActionApproval : "motiva"
 
     CatalogItem ||--o| EquipmentDetail : "detalla si es equipo"
     CatalogItem ||--o| CatalogItemMetrics : "tiene metricas"
@@ -360,6 +365,22 @@ erDiagram
         cuid actorUserId FK
         string targetType
         string targetId
+    }
+    RiskSignalEvidence {
+        cuid id PK
+        cuid providerId FK
+        cuid riskReportId FK
+        string signalKey
+        float contribution
+        string algorithmVersion
+    }
+    ModerationActionApproval {
+        cuid id PK
+        cuid riskReportId FK
+        cuid requestedByUserId FK
+        cuid approvedByUserId FK
+        string action
+        string status
     }
 </script>
 
@@ -808,7 +829,12 @@ erDiagram
     Provider ||--o{ TrustScoreSnapshot : "historiza, cascade"
     Provider ||--o{ RiskReport : "es analizado, cascade"
     User |o--o{ RiskReport : "revisa, escala o resuelve"
-    User ||--o{ ModerationAuditLog : "actua, cascade"
+    User |o--o{ ModerationAuditLog : "actua, set null"
+    Provider ||--o{ RiskSignalEvidence : "acumula señales, cascade"
+    RiskReport |o--o{ RiskSignalEvidence : "respalda, set null"
+    RiskReport |o--o{ ModerationActionApproval : "motiva, set null"
+    User ||--o{ ModerationActionApproval : "solicita, cascade"
+    User |o--o{ ModerationActionApproval : "aprueba, set null"
 
     Review {
         cuid id PK
@@ -905,13 +931,43 @@ erDiagram
     }
     ModerationAuditLog {
         cuid id PK
-        cuid actorUserId FK "cascade"
+        cuid actorUserId FK "set null, nulo si actua el sistema"
         string action "PROVIDER_SUSPENDED, REPORT_ESCALATED y mas"
         string targetType "tipo de entidad afectada"
         string targetId "id polimorfico, SIN FK por diseño"
         text reason "obligatorio"
         json metadata "opcional"
         datetime createdAt
+    }
+    RiskSignalEvidence {
+        cuid id PK
+        cuid providerId FK "cascade"
+        cuid riskReportId FK "set null, reporte que la agrupa"
+        string signalKey "identificador determinista de la señal"
+        float observedValue "opcional, valor medido"
+        float threshold "opcional, umbral normativo"
+        float contribution "aporte al riesgo total"
+        datetime windowStart "inicio de la ventana observada"
+        datetime windowEnd "fin de la ventana observada"
+        json sourceEventIds "opcional, trazabilidad de eventos"
+        json sourceRecordIds "opcional, trazabilidad de registros"
+        string algorithmVersion "version que la genero"
+        datetime createdAt
+    }
+    ModerationActionApproval {
+        cuid id PK
+        string action "accion propuesta"
+        string targetType "tipo de entidad afectada"
+        string targetId "id polimorfico"
+        cuid riskReportId FK "set null, reporte que la motiva"
+        cuid requestedByUserId FK "cascade, quien la propone"
+        cuid approvedByUserId FK "set null, quien la confirma"
+        string status "default PENDING"
+        text reason "obligatorio"
+        datetime suspendedUntil "opcional"
+        datetime requestedAt
+        datetime approvedAt "opcional"
+        datetime expiresAt "caduca si nadie confirma"
     }
 </script>
 
@@ -933,7 +989,7 @@ mermaid.initialize({
 });
 
 const META = {
-  global: 'Vista global: las 38 tablas con sus claves primarias y foráneas. Dos agregados raíz (<b>User</b> y <b>Provider</b>) más un agregado transaccional (<b>QuoteThread</b>). <b>Review</b> es la única entidad que depende de los tres a la vez, y esa triple dependencia es la que hace verificable cada reseña.',
+  global: 'Vista global: las 40 tablas con sus claves primarias y foráneas. Dos agregados raíz (<b>User</b> y <b>Provider</b>) más un agregado transaccional (<b>QuoteThread</b>). <b>Review</b> es la única entidad que depende de los tres a la vez, y esa triple dependencia es la que hace verificable cada reseña.',
   a: 'Módulo A: identidad, sesiones y tokens. El rol vive en dos lugares por diseño: <b>User.role</b> es el rol primario y <b>RoleAssignment</b> permite roles múltiples. El backend une ambos en <b>getUserSystemRoles</b>.',
   b: 'Módulo B: datos de referencia. <b>Department a City</b> elimina la dependencia transitiva ciudad-departamento. <b>Category</b> es auto-referenciada para jerarquía de profundidad arbitraria. Las dos tablas puente resuelven M:N con clave compuesta, y <b>isPrimary</b> es un atributo que pertenece a la relación, no a las entidades.',
   c: 'Módulo C: perfil del proveedor. <b>User 1 a N Provider</b> es intencional, una persona puede tener varios negocios. <b>ProviderMetrics</b> es un read model que separa <b>trustScore</b> interno de <b>publicTrustScore</b>: el score interno nunca sale de la base.',

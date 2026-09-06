@@ -1,7 +1,7 @@
 ﻿# 1. Modelo Entidad-Relación normalizado (3FN)
 
 **Proyecto:** TradeArc / Conecta Emprende AI · **Motor:** PostgreSQL 15 · **ORM:** Prisma 5.22
-**Fuente de verdad:** `prisma/schema.prisma` (918 líneas, 38 tablas, 10 enums) + 18 migraciones en `prisma/migrations/`
+**Fuente de verdad:** `prisma/schema.prisma` (40 tablas, 10 enums) + 28 migraciones en `prisma/migrations/`
 **Visor interactivo:** `er-relacional.html` (pestañas por módulo, zoom y exportación a SVG/PNG)
 
 > Este ER no es una propuesta teórica: se derivó tabla por tabla del esquema Prisma que corre en el MVP. Cada denormalización que sobrevive está declarada en el documento `06-normalizacion-deuda.md` con su motivo y su plan de retiro, en lugar de esconderse.
@@ -41,7 +41,9 @@ Notas de tipo: `cuid` = `TEXT`; `enum` = tipo enumerado nativo de PostgreSQL; `j
 
 ## 1.2 Vista global: estructura relacional en 3FN
 
-Solo claves primarias y foráneas, para leer la topología completa de una sola vez. Las 38 tablas se agrupan en 6 módulos.
+Solo claves primarias y foráneas, para leer la topología completa de una sola vez. Las 40 tablas se agrupan en 6 módulos.
+
+> El diagrama global embebido aquí cubre las 38 tablas del núcleo. Las dos tablas del circuito de riesgo del Sprint 9, `RiskSignalEvidence` y `ModerationActionApproval`, están documentadas en §1.12 y se muestran en el visor interactivo `er-relacional.html`.
 
 ```mermaid
 erDiagram
@@ -1065,11 +1067,66 @@ Salvo el caso polimórfico de `ModerationAuditLog`, que es una decisión de dise
 
 ---
 
-## 1.12 Trazabilidad
+## 1.12 Circuito de riesgo del Sprint 9
+
+Dos tablas incorporadas después del análisis inicial, ambas en el módulo de confianza y moderación.
+
+```mermaid
+erDiagram
+    Provider ||--o{ RiskSignalEvidence : "acumula señales, cascade"
+    RiskReport |o--o{ RiskSignalEvidence : "respalda, set null"
+    RiskReport |o--o{ ModerationActionApproval : "motiva, set null"
+    User ||--o{ ModerationActionApproval : "solicita, cascade"
+    User |o--o{ ModerationActionApproval : "aprueba, set null"
+
+    RiskSignalEvidence {
+        cuid id PK
+        cuid providerId FK "cascade"
+        cuid riskReportId FK "set null"
+        string signalKey "identificador determinista de la señal"
+        float observedValue "opcional, valor medido"
+        float threshold "opcional, umbral normativo"
+        float contribution "aporte al riesgo total"
+        datetime windowStart "inicio de ventana observada"
+        datetime windowEnd "fin de ventana observada"
+        json sourceEventIds "opcional, trazabilidad"
+        json sourceRecordIds "opcional, trazabilidad"
+        string algorithmVersion "version que la genero"
+        datetime createdAt
+    }
+    ModerationActionApproval {
+        cuid id PK
+        string action "accion propuesta"
+        string targetType "tipo de entidad afectada"
+        string targetId "id polimorfico"
+        cuid riskReportId FK "set null"
+        cuid requestedByUserId FK "cascade, proponente"
+        cuid approvedByUserId FK "set null, confirmante"
+        string status "default PENDING"
+        text reason "obligatorio"
+        datetime suspendedUntil "opcional"
+        datetime requestedAt
+        datetime approvedAt "opcional"
+        datetime expiresAt "caduca sin confirmacion"
+    }
+```
+
+**`RiskSignalEvidence` cumple 3FN.** Clave simple, y todos los atributos dependen de la señal concreta observada en su ventana temporal. Los dos `JSONB` de trazabilidad son payload opaco de auditoría, del mismo tipo ya justificado en §1.9: guardan qué eventos y registros originaron la señal, no se consultan relacionalmente y su forma cambia con `algorithmVersion`.
+
+**`ModerationActionApproval` cumple 3FN** y materializa una regla de negocio en el esquema: una acción de moderación grave nace en estado `PENDING` y necesita un `approvedByUserId` distinto del proponente para ejecutarse. El `expiresAt` obliga a que una propuesta no confirmada caduque en lugar de quedar viva indefinidamente. Igual que `ModerationAuditLog`, usa el par `targetType` + `targetId` de forma polimórfica, así que tampoco admite clave foránea sobre el objetivo.
+
+**Cambio en `ModerationAuditLog`:** `actorUserId` pasó a ser opcional con `SET NULL`. Antes era obligatorio con `CASCADE`, lo que significaba que borrar al actor borraba la bitácora. Ahora el registro de auditoría sobrevive al borrado de la cuenta, que es el comportamiento correcto para una bitácora, y además permite acciones ejecutadas por el sistema sin actor humano.
+
+**Efecto sobre el conteo:** el esquema pasa de 38 a **40 tablas**. Las 6 tablas con observaciones de §1.9 no cambian, así que ahora **34 de 40 cumplen 3FN sin reservas**.
+
+---
+
+## 1.13 Trazabilidad
 
 | Elemento del diagrama | Origen en el código |
 |---|---|
-| Las 38 entidades y sus atributos | `prisma/schema.prisma` |
+| Las 40 entidades y sus atributos | `prisma/schema.prisma` |
+| Circuito de riesgo y moderación en dos pasos | `prisma/migrations/20260906120000_sprint9_risk_signal_evidence/`, `20260906140000_sprint9_moderation_two_step/` |
 | Enums `WorkflowPhase`, `ClosureOutcome`, `ModerationState`, `RequestEventType` | `prisma/schema.prisma` líneas 872-935 |
 | Normalización de ubicación y categorías | `prisma/migrations/20260708163000_normalize_database_3nf/` |
 | Modelo de 3 ejes | `prisma/migrations/20260829000000_add_quote_3axis_baseline/` |

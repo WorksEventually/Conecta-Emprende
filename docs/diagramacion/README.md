@@ -23,7 +23,7 @@ Entrada principal: [`index.html`](./index.html)
 
 ## Contenido por entregable
 
-**ER relacional.** Vista global de las 38 tablas más seis vistas modulares con todos los atributos: identidad y acceso, ubicación y categorías, proveedor, catálogo, solicitudes y ledger de eventos, confianza y moderación. Incluye claves `PK`/`FK`/`UK`, cardinalidades, acciones referenciales y las columnas `LEGACY` y `DERIVADO` señaladas explícitamente.
+**ER relacional.** Vista global de las 40 tablas más seis vistas modulares con todos los atributos: identidad y acceso, ubicación y categorías, proveedor, catálogo, solicitudes y ledger de eventos, confianza y moderación. Incluye claves `PK`/`FK`/`UK`, cardinalidades, acciones referenciales y las columnas `LEGACY` y `DERIVADO` señaladas explícitamente.
 
 **Casos de uso.** 63 casos agrupados en 7 paquetes, con 6 actores humanos y 3 sistemas externos. Incluye la jerarquía de generalización de actores, que refleja la herencia de permisos real del backend, y las relaciones «include» y «extend».
 
@@ -49,4 +49,4 @@ Los 22 diagramas fueron validados con el parser de Mermaid antes de publicarse.
 - `server.ts`, `src/lib/quotes-service.ts`, `src/domain/requests/reviewRules.ts`, `src/lib/cron/resolve-expired-quotes.ts`
 - [Análisis de normalización 1FN a BCNF](../../deliverables/entregable-diagramacion-bd-y-uml/01-er-normalizado-3fn.md)
 
-El esquema contiene **38 tablas y 10 enumeraciones**. Estos diagramas documentan el sistema existente; no crean ni modifican la base de datos.
+El esquema contiene **40 tablas y 10 enumeraciones**, incluidas `RiskSignalEvidence` y `ModerationActionApproval` del circuito de riesgo del Sprint 9. Estos diagramas documentan el sistema existente; no crean ni modifican la base de datos.
