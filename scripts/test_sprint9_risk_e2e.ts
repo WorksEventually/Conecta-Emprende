@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { PrismaClient, Availability, LegacyCity } from "@prisma/client";
+import { recalculateProviderTrustScore } from "../src/lib/trust-score-service";
 
 const prisma = new PrismaClient();
 const BASE_URL = process.env.API_URL ?? "http://localhost:3000";
@@ -69,6 +70,10 @@ async function main() {
       },
     });
 
+    await recalculateProviderTrustScore(provider.id);
+    const heldMetrics = await prisma.providerMetrics.findUnique({ where: { providerId: provider.id } });
+    assert.equal(heldMetrics?.growthHold, true);
+
     const list = await request("/api/admin/risk-reports", admin.cookie);
     assert.equal(list.response.status, 200);
     const dto = list.body.data.find((item: any) => item.id === report.id);
@@ -79,14 +84,16 @@ async function main() {
     assert.equal("phone" in dto, false);
     assert.ok(Array.isArray(dto.signalEvidence));
 
-    const holdMetrics = await prisma.providerMetrics.findUnique({ where: { providerId: provider.id } });
-    assert.equal(holdMetrics?.growthHold ?? false, false);
-
-    await prisma.providerMetrics.upsert({
-      where: { providerId: provider.id },
-      update: { growthHold: true },
-      create: { providerId: provider.id, growthHold: true },
+    const dismissed = await request(`/api/admin/risk-reports/${report.id}/status`, admin.cookie, {
+      method: "PATCH",
+      body: JSON.stringify({ status: "DISMISSED", reason: "No se confirmó actividad indebida" }),
     });
+    assert.equal(dismissed.response.status, 200);
+    const releasedMetrics = await prisma.providerMetrics.findUnique({ where: { providerId: provider.id } });
+    assert.equal(releasedMetrics?.growthHold, false);
+
+    await prisma.riskReport.update({ where: { id: report.id }, data: { status: "OPEN" } });
+    await recalculateProviderTrustScore(provider.id);
 
     const approvalRequest = await request(`/api/admin/providers/${provider.id}/moderation-approvals`, admin.cookie, {
       method: "POST",

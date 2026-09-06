@@ -1714,7 +1714,7 @@ async function startServer() {
         return updatedReport;
       });
 
-      if (status === "ACTION_TAKEN" && currentReport.penalty > 0) {
+      if (["DISMISSED", "ESCALATED", "ACTION_TAKEN"].includes(status)) {
         await recalculateProviderTrustScore(currentReport.providerId);
       }
 

@@ -2,6 +2,7 @@ import { prisma } from "./db";
 import type { RiskScoreInput } from "../domain/risk/calculateRiskScore";
 import { calculateRiskScore } from "../domain/risk/calculateRiskScore";
 import { TRUST_SCORE_ALGORITHM_VERSION } from "../domain/rating/calculateTrustScoreV2";
+import { recalculateProviderTrustScore } from "./trust-score-service";
 
 export async function extractProviderMetrics(providerId: string): Promise<RiskScoreInput> {
   const threads = await prisma.quoteThread.findMany({
@@ -321,4 +322,8 @@ export async function analyzeProviderRisk(providerId: string): Promise<void> {
       })),
     });
   });
+
+  // The report changes growth-hold state, so persist the derived Trust metrics
+  // after the report and its immutable signal evidence exist.
+  await recalculateProviderTrustScore(providerId);
 }
