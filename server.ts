@@ -93,6 +93,16 @@ import { createReputationEvidence } from "./src/lib/reputation-events-service.js
 import { createLogger } from "./src/lib/logger.js";
 
 const log = createLogger('Server');
+
+function assertProductionEnv(): void {
+  if (process.env.NODE_ENV !== 'production') return;
+  const required = ['DATABASE_URL', 'DIRECT_URL', 'JWT_SECRET', 'JWT_REFRESH_SECRET', 'APP_URL'];
+  const missing = required.filter((key) => !process.env[key] || process.env[key] === '');
+  if (missing.length > 0) {
+    throw new Error(`Missing required production environment variables: ${missing.join(', ')}`);
+  }
+}
+
 function normalizeAvailability(value: unknown): Availability {
   return Object.values(Availability).includes(value as Availability) ? value as Availability : Availability.DISPONIBLE;
 }
@@ -154,8 +164,9 @@ async function ensureCategoryReference(name: string, parentCategoryId?: string |
 }
 
 async function startServer() {
+  assertProductionEnv();
   const app = express();
-  const PORT = 3000;
+  const PORT = Number(process.env.PORT) || 3000;
 
   // Body Parsing Middleware
   app.use(express.json());
@@ -820,8 +831,14 @@ async function startServer() {
   });
 
   // === API ROUTES (Mounted FIRST) ===
-  app.get("/api/health", (req, res) => {
-    res.json({ status: "ok", timestamp: new Date().toISOString() });
+  app.get("/api/health", async (req, res) => {
+    try {
+      await prisma.$queryRaw`SELECT 1`;
+      res.json({ status: "ok", database: "ok", timestamp: new Date().toISOString() });
+    } catch (error) {
+      log.error("Health check database failure", { error });
+      res.status(503).json({ status: "error", database: "unreachable", timestamp: new Date().toISOString() });
+    }
   });
 
   // GET Providers Search

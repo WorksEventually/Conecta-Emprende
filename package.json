@@ -16,6 +16,7 @@
     "test:unit": "npm run test:trust-v2 && npm run test:risk-telemetry",
     "test:e2e": "npm run test:sprint-e2e && npm run test:risk-integration",
     "test:admin-permissions": "tsx scripts/test_admin_permissions.ts",
+    "bootstrap:production-admin": "tsx scripts/bootstrap_production_admin.ts",
     "test:trust-v2": "tsx scripts/test_trust_score_v2.ts",
     "test:sprint-e2e": "tsx scripts/test_sprint2_trust_v2_e2e.ts",
     "test:risk-telemetry": "tsx scripts/test_risk_telemetry.ts",
