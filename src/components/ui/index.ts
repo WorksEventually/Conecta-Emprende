@@ -8,3 +8,6 @@ export { ErrorBanner } from "./ErrorBanner";
 export { LoadingSpinner, PageLoader, SkeletonLoader } from "./LoadingSpinner";
 export { BrandMark } from "./BrandMark";
 export { PasswordStrength } from "./PasswordStrength";
+export { DashboardCard } from "./DashboardCard";
+export type { DashboardCardStatus } from "./DashboardCard";
+export { SearchFilterBar } from "./SearchFilterBar";

@@ -8,7 +8,18 @@ const BCRYPT_ROUNDS = 12;
 export const COOKIES = {
   ACCESS_TOKEN: "access_token",
   REFRESH_TOKEN: "refresh_token",
+  OAUTH_STATE: "oauth_state",
 } as const;
+
+export function setOAuthStateCookie(res: Response, state: string): void {
+  res.cookie(COOKIES.OAUTH_STATE, state, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    maxAge: 10 * 60 * 1000,
+    path: "/",
+  });
+}
 
 export interface TokenPayload {
   userId: string;

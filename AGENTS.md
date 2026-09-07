@@ -1,6 +1,6 @@
-# Instrucciones de Agente (Conecta Emprende AI)
+# Instrucciones de Agente (TradeArc)
 
-Este documento define las reglas de negocio y convicciones técnicas para el proyecto "Conecta Emprende AI".
+Este documento define las reglas de negocio y convicciones técnicas para el proyecto "TradeArc".
 
 ## Adaptación de Entorno
 - El entorno actual utiliza Vite + React + Express (en lugar de Next.js App Router).

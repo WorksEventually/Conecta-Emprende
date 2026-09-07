@@ -8,6 +8,23 @@ async function adminRequest<T>(path: string, init?: RequestInit): Promise<T> {
 
 export type AdminRiskReportStatus = "OPEN" | "UNDER_REVIEW" | "DISMISSED" | "ESCALATED" | "ACTION_TAKEN";
 
+export interface ModerationActionApproval {
+  id: string;
+  action: "SUSPEND" | "BAN";
+  targetType: "PROVIDER";
+  targetId: string;
+  riskReportId: string | null;
+  requestedByUserId: string;
+  requestedBy?: { id: string; name: string | null };
+  approvedByUserId: string | null;
+  status: "PENDING" | "APPROVED" | "EXPIRED";
+  reason: string;
+  suspendedUntil: string | null;
+  requestedAt: string;
+  approvedAt: string | null;
+  expiresAt: string;
+}
+
 export interface AdminRiskReport {
   id: string;
   providerId: string;
@@ -22,12 +39,28 @@ export interface AdminRiskReport {
     category: string;
   };
   riskScore: number;
-  suspiciousCyclesCount: number;
-  avgSearchTimeSeconds: number | null;
-  avgRequestToCompletionMinutes: number | null;
-  avgMessagesPerRequest: number | null;
-  newAccountsPercentage: number | null;
-  ratingConcentrationScore: number | null;
+  riskLevel: "normal" | "unusual" | "suspicious" | "high-risk";
+  penalty: number;
+  algorithmVersion: string;
+  signals: {
+    suspiciousCyclesCount: number;
+    avgSearchTimeSeconds: number | null;
+    avgRequestToCompletionMinutes: number | null;
+    avgMessagesPerRequest: number | null;
+    newAccountsPercentage: number | null;
+    ratingConcentrationScore: number | null;
+  };
+  signalEvidence: Array<{
+    id: string;
+    signalKey: string;
+    observedValue: number | null;
+    threshold: number | null;
+    contribution: number;
+    windowStart: string;
+    windowEnd: string;
+    sourceRecordIds: string[];
+    algorithmVersion: string;
+  }>;
   status: AdminRiskReportStatus;
   reviewerNotes: string | null;
   recommendedAction: string | null;
@@ -39,13 +72,42 @@ export interface AdminRiskReport {
 
 export interface ModerationAuditLog {
   id: string;
-  actorUserId: string;
-  actor?: { id: string; name: string | null; email: string };
+  actorUserId: string | null;
+  actor?: { id: string; name: string | null; email: string } | null;
   action: string;
   targetType: string;
   targetId: string;
   reason: string;
   metadata?: Record<string, unknown> | null;
+  createdAt: string;
+}
+
+export type RequestEventType =
+  | "REQUEST_CREATED"
+  | "PROVIDER_RESPONDED"
+  | "QUOTE_ACCEPTED"
+  | "COMPLETION_REQUESTED"
+  | "COMPLETION_CONFIRMED"
+  | "COMPLETION_TIMEOUT"
+  | "CANCELLED_BY_REQUESTER"
+  | "CANCELLED_BY_PROVIDER"
+  | "MODERATION_FLAG"
+  | "MODERATION_CLOSURE"
+  | "REOPENED"
+  | "MESSAGE_SENT"
+  | "DEADLINE_EXTENDED"
+  | "ADMIN_OVERRIDE";
+
+export interface RequestEvent {
+  id: string;
+  requestId: string;
+  eventType: RequestEventType;
+  actorUserId: string | null;
+  actor: { id: string; name: string | null; email: string } | null;
+  completionCycleNo: number;
+  idempotencyKey: string;
+  metadataJson: Record<string, unknown> | null;
+  occurredAt: string;
   createdAt: string;
 }
 
@@ -84,10 +146,25 @@ export const adminApi = {
       method: "POST",
       body: JSON.stringify({ reason }),
     }),
+  requestModerationApproval: (providerId: string, data: { action: "SUSPEND" | "BAN"; reason: string; suspendedUntil?: string; riskReportId?: string }) =>
+    adminRequest<ModerationActionApproval>(`/api/admin/providers/${encodeURIComponent(providerId)}/moderation-approvals`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  approveModerationAction: (approvalId: string) =>
+    adminRequest(`/api/admin/moderation-approvals/${encodeURIComponent(approvalId)}/approve`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    }),
+  getModerationApprovals: () => adminRequest<ModerationActionApproval[]>("/api/admin/moderation-approvals"),
   reactivateProvider: (providerId: string, reason: string) =>
     adminRequest(`/api/admin/providers/${encodeURIComponent(providerId)}/reactivate`, {
       method: "POST",
       body: JSON.stringify({ reason }),
     }),
   getAuditLog: () => adminRequest<ModerationAuditLog[]>("/api/admin/audit-log"),
+  getThreadEvents: (threadId: string, eventType?: RequestEventType) => {
+    const query = eventType ? `?eventType=${encodeURIComponent(eventType)}` : "";
+    return adminRequest<RequestEvent[]>(`/api/admin/threads/${encodeURIComponent(threadId)}/events${query}`);
+  },
 };

@@ -11,7 +11,7 @@ export default function FormalizationPage() {
       <PageHeader
         eyebrow="Roadmap futuro"
         title="Formalización legal no forma parte del MVP activo"
-        description="Conecta Emprende AI se concentra ahora en búsqueda, perfiles públicos, catálogo, solicitudes, chat, reseñas verificadas, confianza y revisión administrativa."
+        description="TradeArc se concentra ahora en búsqueda, perfiles públicos, catálogo, solicitudes, chat, reseñas verificadas, confianza y revisión administrativa."
       />
 
       <div className="profile-dashboard">

@@ -142,8 +142,8 @@ export function ManageOffersPage() {
                   {typeLabel[item.itemType] || item.itemType} ·{" "}
                   {item.availabilityStatus === "DISPONIBLE" ? "Activo" : "Inactivo"}
                 </span>
-                <h2>{item.title}</h2>
-                <p>{item.description?.substring(0, 100)}...</p>
+                <h2 className="offer-manager-title text-truncate" title={item.title}>{item.title}</h2>
+                <p className="offer-manager-description text-clamp-2">{item.description || "Sin descripción"}</p>
                 <small>
                   {priceDisplay(item)} · {item.priceUnit || "Por unidad"} · {item.inquiryCount || 0} consultas
                 </small>
@@ -302,6 +302,7 @@ export function OfferEditorPage() {
           <input
             value={form.title}
             onChange={e => setForm({ ...form, title: e.target.value })}
+            maxLength={120}
           />
           {errors.title && <span className="field-error">{errors.title}</span>}
         </label>
@@ -332,6 +333,7 @@ export function OfferEditorPage() {
           <textarea
             value={form.description}
             onChange={e => setForm({ ...form, description: e.target.value })}
+            maxLength={2000}
           />
           {errors.description && <span className="field-error">{errors.description}</span>}
         </label>
@@ -360,6 +362,7 @@ export function OfferEditorPage() {
               value={form.priceUnit}
               onChange={e => setForm({ ...form, priceUnit: e.target.value })}
               placeholder="Ej. por unidad, por hora"
+              maxLength={50}
             />
           </label>
           <label>
@@ -388,6 +391,7 @@ export function OfferEditorPage() {
           <input
             value={form.mainImageUrl}
             onChange={e => setForm({ ...form, mainImageUrl: e.target.value })}
+            maxLength={500}
           />
         </label>
         {errors.submit && <p className="field-error">{errors.submit}</p>}
@@ -466,7 +470,7 @@ export function OfferDetailPage() {
           <span className="eyebrow">
             {typeLabel[offer.itemType] || offer.itemType} · {offer.category}
           </span>
-          <h1>{offer.title}</h1>
+          <h1 className="offer-detail-title" title={offer.title}>{offer.title}</h1>
           <p className="lead">{offer.description}</p>
           <div className="offer-detail-facts">
             <div>
@@ -484,10 +488,10 @@ export function OfferDetailPage() {
           </div>
           <section className="offer-provider-summary">
             <div>
-              <strong>{provider.displayName}</strong>
+              <strong className="text-truncate" title={provider.displayName}>{provider.displayName}</strong>
               <span>{provider.city} · {provider.category}</span>
             </div>
-            <TrustBadge score={provider.trustScore?.finalScore ?? 0} />
+             <TrustBadge score={provider.trustScore?.publicScore ?? null} />
           </section>
           <div className="card-actions">
             {blockedFromQuotes ? (

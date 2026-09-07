@@ -32,6 +32,7 @@ export default function ChatPage() {
     fetchMyThreads,
     clearThreads,
     getThread,
+    refreshThread,
     addMessage,
     updateThread,
     isLoading,
@@ -54,6 +55,9 @@ export default function ChatPage() {
   const isRequester = !!user && thread?.senderId === user.id;
   const isProviderParticipant = !!providerIdForUser && thread?.providerId === providerIdForUser;
   const actor: "provider" | "requester" = isProviderParticipant ? "provider" : "requester";
+  // La conversación mostrada y el `requestId` de la ruta deben coincidir antes
+  // de permitir cualquier mutación; si no, se actuaría sobre otra solicitud.
+  const isThreadReady = !!thread && thread.id === requestId;
 
   useEffect(() => {
     if (!user) {
@@ -75,6 +79,15 @@ export default function ChatPage() {
     }
   }, [thread?.providerId, getProvider]);
 
+  // Al cambiar de conversación no se arrastran borradores ni cotizaciones de
+  // la anterior: enviarlos en otra solicitud sería un error de intención.
+  useEffect(() => {
+    setReply("");
+    setQuoteOpen(false);
+    setPrice(currentThread?.quotedPriceLabel || "");
+    setDelivery(currentThread?.quotedDeliveryTime || "");
+  }, [currentThread?.id]);
+
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [thread?.messages.length]);
@@ -89,11 +102,12 @@ export default function ChatPage() {
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
-    if (!reply.trim() || !requestId) return;
+    if (!reply.trim() || !requestId || !isThreadReady) return;
     try {
       await addMessage(requestId, reply.trim());
       setReply("");
-      await getThread(requestId);
+      // addMessage ya refresca el thread internamente; sin getThread
+      // extra para evitar doble fetch y el parpadeo de carga.
     } catch (e) {
       console.error("Send message error:", e);
     }
@@ -101,50 +115,69 @@ export default function ChatPage() {
 
   const handleSubmitQuote = async (event: FormEvent) => {
     event.preventDefault();
-    if (!price.trim() || !delivery.trim() || !requestId) return;
+    if (!price.trim() || !delivery.trim() || !requestId || !isThreadReady) return;
     try {
       await updateThread(requestId, {
         quotedPriceLabel: price.trim(),
         quotedDeliveryTime: delivery.trim(),
-        status: "QUOTE_SENT",
       });
+
+      await addMessage(
+        requestId,
+        `📋 Cotización enviada:\n💰 Precio: ${price.trim()}\n📅 Tiempo de entrega: ${delivery.trim()}`
+      );
+
       setQuoteOpen(false);
-      await getThread(requestId);
+      await refreshThread(requestId);
     } catch (e) {
       console.error("Send quote error:", e);
     }
   };
 
-  const handleAcceptQuote = async () => {
-    if (!requestId) return;
+  const handleAcceptQuotation = async () => {
+    if (!requestId || !isThreadReady || !thread?.quotedPriceLabel) return;
     try {
-      await updateThread(requestId, { status: "QUOTE_ACCEPTED" });
-      await getThread(requestId);
+      await fetch(`/api/quotes/${requestId}/accept-quotation`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          price: thread.quotedPriceLabel,
+          delivery: thread.quotedDeliveryTime,
+        }),
+      });
+
+      await addMessage(
+        requestId,
+        `✅ El cliente aceptó la cotización: ${thread.quotedPriceLabel}`
+      );
+
+      await refreshThread(requestId);
     } catch (e) {
-      console.error("Accept quote error:", e);
+      console.error("Accept quotation error:", e);
     }
   };
 
   const handleConfirm = async (as: "requester" | "provider") => {
-    if (!requestId) return;
+    if (!requestId || !isThreadReady) return;
     try {
-      if (as === "requester") {
-        await updateThread(requestId, { confirmedByRequesterAt: new Date().toISOString() });
-      } else {
-        await updateThread(requestId, { confirmedByProviderAt: new Date().toISOString(), status: "COMPLETED" });
-      }
-      await getThread(requestId);
+      const role = as === "requester" ? "REQUESTER" : "PROVIDER";
+      await fetch(`/api/quotes/${requestId}/complete`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ role }),
+      });
+      await refreshThread(requestId);
     } catch (e) {
       console.error("Confirm error:", e);
     }
   };
 
   const handleClose = async () => {
-    if (!requestId || !user) return;
+    if (!requestId || !user || !isThreadReady) return;
     try {
       const newStatus = isProviderParticipant ? "CLOSED_PROVIDER" : "CLOSED_REQUESTER";
       await updateThread(requestId, { status: newStatus });
-      await getThread(requestId);
+      await refreshThread(requestId);
     } catch (e) {
       console.error("Close error:", e);
     }
@@ -159,7 +192,9 @@ export default function ChatPage() {
     );
   }
 
-  if (isLoading) {
+  // Mientras el hilo cargado no corresponda a la ruta actual se muestra carga,
+  // nunca los datos de la conversación anterior.
+  if (isLoading || (thread && thread.id !== requestId)) {
     return (
       <div className="content-page">
         <div className="skeleton-list">
@@ -200,6 +235,7 @@ export default function ChatPage() {
             value={search}
             onChange={event => setSearch(event.target.value)}
             placeholder="Buscar conversación"
+            maxLength={120}
           />
         </label>
         <nav className="conversation-list">
@@ -215,9 +251,9 @@ export default function ChatPage() {
                   {(item.providerDisplayName || "PR").slice(0, 2).toUpperCase()}
                 </span>
                 <span className="conversation-copy">
-                  <strong>{item.providerDisplayName || "Proveedor"}</strong>
-                  <b>{item.subject}</b>
-                  <small>{itemLastMsg?.text}</small>
+                  <strong className="conversation-name" title={item.providerDisplayName || "Proveedor"}>{item.providerDisplayName || "Proveedor"}</strong>
+                  <b className="conversation-subject" title={item.subject}>{item.subject}</b>
+                  <small className="conversation-preview" title={itemLastMsg?.text || "Sin mensajes"}>{itemLastMsg?.text || "Sin mensajes"}</small>
                 </span>
                 <span className="conversation-meta">
                   <time>{item.dateLabel || new Date(item.createdAt).toLocaleDateString("es-NI", { day: "numeric", month: "short" })}</time>
@@ -234,9 +270,9 @@ export default function ChatPage() {
             <span className="conversation-avatar large">
               {providerName.slice(0, 2).toUpperCase()}
             </span>
-            <span>
-              <strong>{providerName}</strong>
-              <small>
+            <span className="chat-header-copy">
+              <strong className="chat-header-name" title={providerName}>{providerName}</strong>
+              <small className="chat-header-subject" title={thread.subject}>
                 {thread.subject}
                 {thread.catalogItemId ? " · Producto" : ""}
               </small>
@@ -259,7 +295,12 @@ export default function ChatPage() {
 
         <details className="chat-mobile-summary">
           <summary>Resumen de la solicitud <ChevronDown /></summary>
-          <RequestSummaryUI thread={thread} providerName={providerName} />
+          <RequestSummaryUI
+            thread={thread}
+            providerName={providerName}
+            canAccept={actor === "requester" && (!thread.acceptedQuotation || thread.acceptedQuotation.price !== thread.quotedPriceLabel)}
+            onAcceptQuote={handleAcceptQuotation}
+          />
         </details>
 
         <section className="retention-banner">
@@ -280,103 +321,162 @@ export default function ChatPage() {
                 providerName={providerName}
                 requesterName={clientName}
               />
+              {message.text.includes("📋 Cotización enviada") &&
+                actor === "requester" &&
+                (!thread.acceptedQuotation || 
+                 thread.acceptedQuotation.price !== thread.quotedPriceLabel) && (
+                  <button
+                    className="button-inline small"
+                    onClick={handleAcceptQuotation}
+                    title="Registrar que estás de acuerdo con este precio"
+                  >
+                    👍 De acuerdo
+                  </button>
+                )}
             </article>
           ))}
+          {thread.workflow_phase === "COMPLETION_PENDING" && thread.completionDeadline && (
+            <section className="completion-banner warning">
+              <Info size={20} />
+              <div>
+                <strong>Esperando confirmación de la otra parte</strong>
+                <p>Plazo límite: {new Date(thread.completionDeadline).toLocaleString("es-NI", { dateStyle: "medium", timeStyle: "short" })}</p>
+              </div>
+            </section>
+          )}
+
+          {thread.workflow_phase === "CLOSED" && thread.closure_outcome && (
+            <section className="completion-banner info">
+              <CheckCheck size={20} />
+              <div>
+                <strong>Trabajo cerrado</strong>
+                <p>{getClosureOutcomeMessage(thread.closure_outcome)}</p>
+              </div>
+            </section>
+          )}
+
           <div ref={bottomRef} />
         </section>
 
-        {thread.status !== "COMPLETED" && !thread.status.startsWith("CLOSED") && (
-          <footer className="chat-composer">
-            <div className="quick-replies">
-              {quickReplies[actor].map(text => (
-                <button key={text} onClick={() => setReply(text)}>
-                  {text}
+        <footer className="chat-composer">
+          {(thread.workflow_phase === "OPEN" || thread.workflow_phase === "COMPLETION_PENDING") && (
+            <>
+              <div className="quick-replies">
+                {quickReplies[actor].map(text => (
+                  <button key={text} onClick={() => setReply(text)}>
+                    {text}
+                  </button>
+                ))}
+              </div>
+              <div className="chat-quick-actions">
+                {actor === "provider" && (
+                  <button onClick={() => setQuoteOpen(!quoteOpen)}>
+                    <HandCoins /> Enviar precio estimado
+                  </button>
+                )}
+                <button
+                  onClick={() => {
+                    if (!isThreadReady) return;
+                    addMessage(requestId, actor === "provider" ? "¿Podés compartir cantidad, medidas y fecha deseada?" : "Te comparto los detalles necesarios para preparar la cotización.");
+                  }}
+                >
+                  <FileText /> {actor === "provider" ? "Pedir más detalles" : "Enviar detalles"}
                 </button>
-              ))}
-            </div>
-            <div className="chat-quick-actions">
-              {actor === "provider" && (
-                <button onClick={() => setQuoteOpen(!quoteOpen)}>
-                  <HandCoins /> Enviar precio estimado
+                <button onClick={() => handleConfirm(actor === "provider" ? "provider" : "requester")}>
+                  <CheckCheck /> Confirmar trabajo
                 </button>
+                <button onClick={() => setExternalOpen(true)}>
+                  <AlertTriangle /> Contacto externo
+                </button>
+              </div>
+
+              {quoteOpen && (
+                <form className="quote-composer" onSubmit={handleSubmitQuote}>
+                  <div>
+                    <strong>Enviar cotización en la conversación</strong>
+                    <small>El precio y entrega quedarán vinculados a la solicitud.</small>
+                  </div>
+                  <input
+                    required
+                    value={price}
+                    onChange={event => setPrice(event.target.value)}
+                    placeholder="Ej. C$1,200"
+                    maxLength={80}
+                  />
+                  <input
+                    required
+                    value={delivery}
+                    onChange={event => setDelivery(event.target.value)}
+                    placeholder="Ej. 5 días"
+                    maxLength={80}
+                  />
+                  <button className="button primary">
+                    <Send /> Enviar cotización
+                  </button>
+                </form>
               )}
-              <button
-                onClick={() => addMessage(requestId, actor === "provider" ? "¿Podés compartir cantidad, medidas y fecha deseada?" : "Te comparto los detalles necesarios para preparar la cotización.")}
-              >
-                <FileText /> {actor === "provider" ? "Pedir más detalles" : "Enviar detalles"}
-              </button>
-              <button onClick={() => handleConfirm(actor === "provider" ? "provider" : "requester")}>
-                <CheckCheck /> Confirmar trabajo
-              </button>
-              <button onClick={() => setExternalOpen(true)}>
-                <AlertTriangle /> Contacto externo
-              </button>
+            </>
+          )}
+
+          {thread.closure_outcome !== null ? (
+            <div className="message-composer chat-closed-notice">
+              <p>Esta conversación está cerrada. No se pueden enviar más mensajes.</p>
             </div>
-
-            {quoteOpen && (
-              <form className="quote-composer" onSubmit={handleSubmitQuote}>
-                <div>
-                  <strong>Enviar cotización en la conversación</strong>
-                  <small>El precio y entrega quedarán vinculados a la solicitud.</small>
-                </div>
-                <input
-                  required
-                  value={price}
-                  onChange={event => setPrice(event.target.value)}
-                  placeholder="Ej. C$1,200"
-                />
-                <input
-                  required
-                  value={delivery}
-                  onChange={event => setDelivery(event.target.value)}
-                  placeholder="Ej. 5 días"
-                />
-                <button className="button primary">
-                  <Send /> Enviar cotización
-                </button>
-              </form>
-            )}
-
+          ) : (
             <form className="message-composer" onSubmit={handleSubmit}>
               <textarea
                 value={reply}
                 onChange={event => setReply(event.target.value)}
                 placeholder="Escribí un mensaje con los detalles del acuerdo…"
                 rows={2}
+                maxLength={2000}
               />
               <button className="button primary" disabled={!reply.trim()} aria-label="Enviar mensaje">
                 <Send /> Enviar
               </button>
             </form>
-          </footer>
-        )}
+          )}
+        </footer>
       </main>
 
       <aside className="chat-context">
-        <RequestSummaryUI thread={thread} providerName={providerName} />
+        <RequestSummaryUI
+          thread={thread}
+          providerName={providerName}
+          canAccept={actor === "requester" && (!thread.acceptedQuotation || thread.acceptedQuotation.price !== thread.quotedPriceLabel)}
+          onAcceptQuote={handleAcceptQuotation}
+        />
         <section className="chat-context-section">
           <h2>Próxima acción</h2>
-          {thread.status === "OPEN" && (
-            <p>El proveedor debe responder para iniciar la negociación.</p>
+          {thread.workflow_phase === "OPEN" && (
+            <p>
+              {thread.quotedPriceLabel
+                ? "Definan los detalles finales y confirmen cuando el trabajo termine."
+                : "Definan precio, alcance y fecha de entrega."}
+            </p>
           )}
-          {thread.status === "IN_CONVERSATION" && (
-            <p>Definan precio, alcance y fecha de entrega.</p>
+          {thread.workflow_phase === "COMPLETION_PENDING" && (
+            <p>
+              Confirmación pendiente. La otra parte tiene hasta{" "}
+              {thread.completionDeadline
+                ? new Date(thread.completionDeadline).toLocaleDateString("es-NI", {
+                    day: "numeric",
+                    month: "long",
+                    year: "numeric",
+                    hour: "2-digit",
+                    minute: "2-digit"
+                  })
+                : "72 horas"}{" "}
+              para confirmar.
+            </p>
           )}
-          {thread.status === "QUOTE_SENT" && (
-            <>
-              <p>La cotización espera respuesta del cliente.</p>
-              <button className="button primary full" onClick={handleAcceptQuote}>
-                Aceptar cotización
-              </button>
-            </>
-          )}
-          {thread.status === "QUOTE_ACCEPTED" && (
-            <p>El acuerdo está aceptado. Confirmen cuando el trabajo termine.</p>
-          )}
-          {thread.status === "COMPLETED" && (
+          {thread.workflow_phase === "CLOSED" && thread.closure_outcome === "BILATERAL" && (
             <p className="success-note">
               <BadgeCheck /> Reseña verificada desbloqueada.
             </p>
+          )}
+          {thread.workflow_phase === "CLOSED" && thread.closure_outcome !== "BILATERAL" && (
+            <p>Trabajo cerrado: {getClosureOutcomeMessage(thread.closure_outcome)}</p>
           )}
         </section>
         <section className="chat-context-section">
@@ -389,7 +489,7 @@ export default function ChatPage() {
               {thread.confirmedByProviderAt ? <Check /> : <Circle />} Proveedor
             </span>
           </div>
-          {thread.status !== "COMPLETED" && (
+          {(thread.workflow_phase === "OPEN" || thread.workflow_phase === "COMPLETION_PENDING") && (
             <>
               <button
                 className="button secondary full"
@@ -456,6 +556,7 @@ export default function ChatPage() {
             <textarea
               required
               minLength={10}
+              maxLength={1000}
               value={reportText}
               onChange={event => setReportText(event.target.value)}
               placeholder="Explicá qué ocurrió"
@@ -498,31 +599,54 @@ function MessageBlock({
   return (
     <article className={`chat-message ${role === "provider" ? "provider" : "client"}`}>
       <div className="message-author">
-        <strong>{role === "provider" ? providerName : requesterName}</strong>
+        <strong className="message-author-name" title={role === "provider" ? providerName : requesterName}>
+          {role === "provider" ? providerName : requesterName}
+        </strong>
         <time>{time}</time>
       </div>
-      <p>{text}</p>
+      <p className="message-text">{text}</p>
     </article>
   );
+}
+
+function getClosureOutcomeMessage(outcome: string): string {
+  const messages: Record<string, string> = {
+    BILATERAL: "Ambas partes confirmaron el trabajo completado.",
+    REQUESTER_CONFIRMED_PROVIDER_NO_RESPONSE: "El cliente confirmó pero el proveedor no respondió dentro de 72 horas.",
+    PROVIDER_CLAIMED_REQUESTER_NO_RESPONSE: "El proveedor confirmó pero el cliente no respondió dentro de 72 horas.",
+    CANCELLED_BY_REQUESTER: "Cancelado por el cliente.",
+    CANCELLED_BY_PROVIDER: "Cancelado por el proveedor.",
+    CANCELLED_BY_PROVIDER_AFTER_ENGAGEMENT: "El proveedor canceló después de interactuar. Podés dejar una reseña calificada.",
+    MODERATION_CLOSURE: "Cerrado por moderación.",
+    DECLINED_BY_PROVIDER: "El proveedor declinó esta solicitud.",
+    EXPIRED_NO_PROVIDER_RESPONSE: "El proveedor no respondió a la solicitud.",
+    ACCOUNT_DEACTIVATED: "Cerrado por desactivación de cuenta.",
+    CLOSED_BY_ADMIN: "Cerrado por un administrador.",
+  };
+  return messages[outcome] || "Cerrado.";
 }
 
 function RequestSummaryUI({
   thread,
   providerName,
+  onAcceptQuote,
+  canAccept,
 }: {
-  thread: { subject?: string; body?: string; quotedPriceLabel?: string | null; quotedDeliveryTime?: string | null; status?: string; createdAt?: string };
+  thread: { id?: string; subject?: string; body?: string; quotedPriceLabel?: string | null; quotedDeliveryTime?: string | null; status?: string; createdAt?: string };
   providerName: string;
+  onAcceptQuote?: () => void;
+  canAccept?: boolean;
 }) {
   const clientMsg = thread.body;
   return (
     <section className="chat-context-section request-summary">
       <span className="eyebrow">Solicitud vinculada</span>
-      <h2>{thread.subject}</h2>
+      <h2 className="request-summary-title" title={thread.subject}>{thread.subject}</h2>
       <p>{clientMsg || "Sin descripción"}</p>
       <dl>
         <div>
           <dt>Proveedor</dt>
-          <dd>{providerName}</dd>
+          <dd className="text-truncate" title={providerName}>{providerName}</dd>
         </div>
         <div>
           <dt>Estado</dt>
@@ -541,7 +665,12 @@ function RequestSummaryUI({
           </div>
         )}
       </dl>
-      <Link className="text-link" to={`/requests/${thread.subject}`}>Ver detalle completo</Link>
+      {canAccept && onAcceptQuote && (
+        <button className="button secondary small full" onClick={onAcceptQuote}>
+          👍 De acuerdo con este precio
+        </button>
+      )}
+      <Link className="text-link" to={`/requests/${thread.id}`}>Ver detalle completo</Link>
     </section>
   );
 }

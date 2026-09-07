@@ -6,7 +6,8 @@ import {
 } from "lucide-react";
 import { useProvidersStore } from "../stores/providers-store";
 import { useAuthStore } from "../stores/auth-store";
-import { EmptyState, SkeletonRows, TrustBadge, VerificationBadge } from "../components/mvp/Ui";
+import { EmptyState, SkeletonRows, VerificationBadge } from "../components/mvp/Ui";
+import { TrustScoreBadge } from "../components/provider/TrustScoreBadge";
 import { canReceiveRequests, isLifecycleBlockingStatus, getProviderStatusBanner } from "../lib/identity";
 
 const availabilityLabelMap: Record<string, string> = {
@@ -65,7 +66,7 @@ export default function ProviderPage() {
   const medals = currentProvider?.medals || [];
   const photos = currentProvider?.photos || [];
   const portfolioImages = photos.map((p: any) => p.imageUrl).filter(Boolean);
-  const trustScore = currentProvider?.provider?.trustScore?.finalScore ?? currentProvider?.provider?.trustScore ?? 0;
+  const trustScore = currentProvider?.provider?.trustScore?.publicScore ?? null;
 
   const activeItems = useMemo(
     () => catalogItems.filter((item: any) => item.availabilityStatus === "DISPONIBLE"),
@@ -105,14 +106,14 @@ export default function ProviderPage() {
   const blockedFromQuotes = isLifecycleBlockingStatus(providerStatus);
   const statusBanner = getProviderStatusBanner(providerStatus);
   const activeOfferCount = activeItems.length;
-  const publicProfileSignal = trustScore >= 80 && activeOfferCount > 0 ? "Perfil comercial sólido" : "Perfil en construcción";
+  const publicProfileSignal = trustScore !== null && trustScore >= 80 && activeOfferCount > 0 ? "Perfil comercial sólido" : "Perfil en construcción";
 
   return (
     <div className="provider-page">
       <section
         className="provider-cover"
         style={{
-          backgroundImage: `linear-gradient(90deg,rgba(14,35,31,.92),rgba(14,35,31,.25)),url(${portfolioImages[0] || provider.coverImageUrl || ""})`,
+          backgroundImage: `linear-gradient(90deg,rgba(13, 30, 56, .92),rgba(13, 30, 56, .25)),url(${portfolioImages[0] || provider.coverImageUrl || ""})`,
         }}
       >
         <div>
@@ -120,7 +121,7 @@ export default function ProviderPage() {
             <ArrowLeft /> Volver a resultados
           </Link>
           <span className="eyebrow">{provider.category}</span>
-          <h1>{provider.displayName}</h1>
+          <h1 title={provider.displayName}>{provider.displayName}</h1>
           <p className="provider-tagline">{provider.shortDescription || "Soluciones locales para negocios que necesitan avanzar con claridad."}</p>
           <div className="provider-identity-meta">
             <span><MapPin />{provider.city}</span>
@@ -128,7 +129,11 @@ export default function ProviderPage() {
             <span><Clock3 />Responde en {provider.responseTimeHrs || 24} h</span>
           </div>
           <div className="badges">
-            <TrustBadge score={trustScore} />
+            <TrustScoreBadge
+               trustScore={trustScore}
+              bilateralCompletions={provider.metrics?.bilateralCompletions ?? 0}
+              phoneVerified={provider.verified}
+            />
             <VerificationBadge level={(provider.verificationLevel as any) || "UNVERIFIED"} />
             <span className="badge"><ShieldCheck />{publicProfileSignal}</span>
           </div>
@@ -300,7 +305,7 @@ export default function ProviderPage() {
         <aside className="profile-sidebar">
           <section>
             <h2><ShieldCheck /> Confianza y reputación</h2>
-            <strong className="big-score">{trustScore}<small>/100</small></strong>
+             <strong className="big-score">{trustScore ?? "Evidencia insuficiente"}{trustScore !== null && <small>/100</small>}</strong>
             <p>
               Se calcula con solicitudes completadas dentro de la plataforma, reseñas verificadas y nivel del perfil.
               Las conversaciones externas no suman al historial.
@@ -393,6 +398,7 @@ export default function ProviderPage() {
               <textarea
                 required
                 minLength={10}
+                maxLength={1000}
                 value={description}
                 onChange={event => setDescription(event.target.value)}
                 placeholder="Contanos qué ocurrió"

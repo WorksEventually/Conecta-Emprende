@@ -7,7 +7,7 @@ export type PriceRange = "LOW" | "MEDIUM" | "HIGH" | "NEGOTIABLE";
 export type Availability = "AVAILABLE" | "BUSY" | "UNAVAILABLE";
 export type FormalizationStatus = "INFORMAL" | "IN_PROGRESS" | "MIPYME";
 export type VerificationLevel = "UNVERIFIED" | "PHONE" | "COMPLETE";
-export type RequestStatus = "DRAFT" | "OPEN" | "IN_CONVERSATION" | "QUOTE_SENT" | "QUOTE_ACCEPTED" | "CLOSED_BY_REQUESTER" | "CLOSED_BY_PROVIDER" | "COMPLETED" | "CANCELLED" | "DISPUTED";
+export type RequestStatus = "DRAFT" | "OPEN" | "IN_CONVERSATION" | "CLOSED_BY_REQUESTER" | "CLOSED_BY_PROVIDER" | "COMPLETED" | "CANCELLED" | "DISPUTED";
 export type OfferType = "PRODUCT" | "SERVICE" | "PACKAGE" | "PORTFOLIO_ITEM";
 export type OfferStatus = "ACTIVE" | "INACTIVE" | "ARCHIVED";
 export type PriceType = "FIXED" | "FROM" | "NEGOTIABLE" | "PER_UNIT" | "PER_PROJECT";
@@ -67,11 +67,6 @@ const imageByCategory: Record<string, string> = {
   "Servicios tecnológicos":"https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=1000&q=80",
 };
 
-export function calculateTrustScore(input:{phoneVerified:boolean;profileComplete:boolean;requestsResponded:number;requestsCompleted:number;averageReview:number;accountAgeDays:number}){
-  const ageFactor=input.accountAgeDays<7?.2:input.accountAgeDays<30?.5:input.accountAgeDays<90?.8:1;
-  return Math.round((Number(input.phoneVerified)*15+Number(input.profileComplete)*15+Math.min(input.requestsResponded/5,1)*20+Math.min(input.requestsCompleted/10,1)*30+(input.averageReview/5)*20)*ageFactor);
-}
-
 export const seedProviders: ProviderProfile[] = Array.from({ length: 50 }, (_, index) => {
   const city = index === 0 ? "Managua" : CREATIVE_CITIES[index % CREATIVE_CITIES.length];
   const category = index === 1 ? "Empaques ecológicos" : index === 4 ? "Bordado y serigrafía" : index === 8 ? "Café y alimentos" : categories[index % categories.length];
@@ -80,7 +75,7 @@ export const seedProviders: ProviderProfile[] = Array.from({ length: 50 }, (_, i
   const verificationLevel: VerificationLevel = index % 4 === 0 ? "COMPLETE" : index % 3 === 0 ? "PHONE" : "UNVERIFIED";
   const accountAgeDays=index%9===0?5:index%7===0?20:index%4===0?65:180;
   const completedRequests=index%17;
-  const trustScore=calculateTrustScore({phoneVerified:verificationLevel!=="UNVERIFIED",profileComplete:true,requestsResponded:2+(index%8),requestsCompleted:completedRequests,averageReview:4+(index%2)*.5,accountAgeDays});
+  const trustScore = index % 5 === 0 ? 85 : index % 3 === 0 ? 70 : index % 2 === 0 ? 55 : 40;
   return {
     id: `provider-${index + 1}`, ownerUserId: index === 0 ? "user-provider" : `user-${index + 1}`,
     publicName: index === 0 ? "Estudio Creativo Managua" : `${nameByCategory[category]} ${nameSuffixes[Math.floor(index/10)]} ${city}`,
@@ -117,7 +112,7 @@ export const seedRequests: QuoteRequest[] = Array.from({ length: 10 }, (_, index
   return {
     id:`request-${index+1}`,requesterId:"user-client",requesterName:"Andrea López",providerId:`provider-${(index%8)+1}`,productId:index<5?`offer-${(index%8)+1}-1`:null,
     title:["Identidad para nuevo negocio","Empaque para café","Pedido de uniformes","Catálogo de productos"][index%4],description:"Necesito una propuesta clara con alcance, tiempo estimado y condiciones de entrega para mi emprendimiento.",budgetRange:(["LOW","MEDIUM","HIGH"] as PriceRange[])[index%3],location:CREATIVE_CITIES[index%10],contactPreference:"Mensajes de la plataforma",
-    status:completed?"COMPLETED":index<7?"QUOTE_SENT":index<9?"IN_CONVERSATION":"OPEN",quotedPriceLabel:index<7?`C$${1200+index*350}`:undefined,quotedDeliveryTime:index<7?"5 días":undefined,
+    status:completed?"COMPLETED":index<7?"IN_CONVERSATION":index<9?"IN_CONVERSATION":"OPEN",quotedPriceLabel:index<7?`C$${1200+index*350}`:undefined,quotedDeliveryTime:index<7?"5 días":undefined,
     confirmedByRequesterAt:completed?"2026-06-20T14:00:00.000Z":null,confirmedByProviderAt:completed?"2026-06-20T16:00:00.000Z":null,completedAt:completed?"2026-06-20T16:00:00.000Z":null,createdAt,updatedAt:createdAt,unreadByProvider:index%3,unreadByRequester:index%2,
     messages:[
       {id:`system-${index}`,author:"system",senderId:"SYSTEM",type:"SYSTEM",text:"Esta conversación queda vinculada a tu solicitud para dar seguimiento y desbloquear una reseña verificada al finalizar.",createdAt},

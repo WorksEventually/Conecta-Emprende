@@ -49,7 +49,7 @@ function cacheSet(query: string, intent: SearchIntent): void {
 }
 
 const SYSTEM_PROMPT_INTENT = `Eres un extractor de intenciones para una plataforma de proveedores de servicios en Nicaragua.
-Plataforma: Conecta Emprende — conecta proveedores locales con clientes en todo el país.
+Plataforma: TradeArc — conecta proveedores locales con clientes en todo el país.
 Contexto local: Moneda: córdoba nicaragüense (símbolo C$, código NIO). Ejemplo: "5000" sin moneda = 5000 C$ NIO.
 
 Ciudades válidas de Nicaragua (devuelve EXACTAMENTE el nombre listed, sin abreviaciones):

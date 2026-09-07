@@ -5,6 +5,7 @@ import {
   Check,
   Circle,
   ExternalLink,
+  Info,
   MessageCircle,
   Package,
   Plus,
@@ -16,17 +17,17 @@ import {
 import { useAuthStore, type AuthUser } from "../stores/auth-store";
 import { useProvidersStore } from "../stores/providers-store";
 import { useQuotesStore, type QuoteThread } from "../stores/quotes-store";
+import { TrustScoreBadge } from "../components/provider/TrustScoreBadge";
 import {
   EmptyState,
   PageHeader,
   RequestStatusBadge,
   SkeletonRows,
-  TrustBadge,
   UnavailableForMvpCard,
   VerificationBadge,
 } from "../components/mvp/Ui";
 
-const ACTIVE_STATUSES = ["OPEN", "IN_CONVERSATION", "QUOTE_SENT", "QUOTE_ACCEPTED"];
+const ACTIVE_STATUSES = ["OPEN", "IN_CONVERSATION"];
 
 function AccountSummary({ user }: { user: AuthUser }) {
   const displayName = user.name || user.email?.split("@")[0] || "Usuario";
@@ -72,10 +73,12 @@ function RecentRequests({ threads }: { threads: QuoteThread[] }) {
     <div className="mini-request-list">
       {recent.map(thread => (
         <Link to={`/requests/${thread.id}/chat`} key={thread.id}>
-          <span>
+          <span className="mini-request-copy">
             <RequestStatusBadge status={thread.status as any} />
-            <strong>{thread.subject}</strong>
-            <small>{thread.providerDisplayName || "Proveedor"} · {thread.messages.at(-1)?.text || "Sin mensajes"}</small>
+            <strong className="text-truncate" title={thread.subject}>{thread.subject}</strong>
+            <small className="text-clamp-2" title={`${thread.providerDisplayName || "Proveedor"} · ${thread.messages.at(-1)?.text || "Sin mensajes"}`}>
+              {thread.providerDisplayName || "Proveedor"} · {thread.messages.at(-1)?.text || "Sin mensajes"}
+            </small>
           </span>
           <MessageCircle />
         </Link>
@@ -214,7 +217,7 @@ export default function MyProfileDashboardPage() {
   const inactiveItems = catalogItems.filter((item: any) => item.availabilityStatus !== "DISPONIBLE");
   const mostConsulted = [...catalogItems].sort((a: any, b: any) => b.inquiryCount - a.inquiryCount)[0];
   const portfolioImages = currentProvider?.photos?.map((photo: any) => photo.imageUrl).filter(Boolean) || [];
-  const trustScore = currentProvider?.provider?.trustScore?.finalScore ?? provider.trustScore ?? 0;
+  const trustScore = currentProvider?.provider?.trustScore?.publicScore ?? null;
   const medals = currentProvider?.medals || [];
 
   const checklist = [
@@ -259,10 +262,15 @@ export default function MyProfileDashboardPage() {
             />
             <div>
               <span className="eyebrow">Resumen de gestión</span>
-              <h2>{provider.displayName}</h2>
-              <p>{provider.aboutDescription || provider.shortDescription}</p>
+              <h2 className="text-truncate" title={provider.displayName}>{provider.displayName}</h2>
+              <p className="text-clamp-3">{provider.aboutDescription || provider.shortDescription}</p>
               <div className="badges">
-                <TrustBadge score={trustScore} />
+                <TrustScoreBadge
+                   trustScore={trustScore}
+                  bilateralCompletions={provider.metrics?.bilateralCompletions ?? 0}
+                  emailVerified={!!user?.emailVerified}
+                  phoneVerified={provider.verified}
+                />
                 <VerificationBadge level={provider.verificationLevel} />
                 <span className="badge">
                   <ShieldCheck /> {completeness >= 80 ? "Perfil comercial sólido" : "Perfil en construcción"}
@@ -270,6 +278,22 @@ export default function MyProfileDashboardPage() {
               </div>
             </div>
           </section>
+
+          {(() => {
+            const bilateralCompletions = provider.metrics?.bilateralCompletions ?? 0;
+            if (bilateralCompletions < 3) {
+              return (
+                <div className="trust-nudge alert alert-info">
+                  <Info size={18} />
+                  <p>
+                    Completá 3 trabajos para desbloquear tu calificación pública.
+                    Ya tenés {bilateralCompletions} trabajo{bilateralCompletions !== 1 ? "s" : ""} completado{bilateralCompletions !== 1 ? "s" : ""}.
+                  </p>
+                </div>
+              );
+            }
+            return null;
+          })()}
 
           <section className="dashboard-panel">
             <div className="section-heading">

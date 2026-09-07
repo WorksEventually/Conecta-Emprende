@@ -8,6 +8,7 @@ import { useAuthStore } from "../stores/auth-store";
 import { AvailabilityBadge, EmptyState, IntentChip, PriceBadge, SkeletonRows, TrustBadge, VerificationBadge } from "../components/mvp/Ui";
 import { useDebouncedValue } from "../hooks/use-debounced-value";
 import { isSanctionedStatus } from "../lib/identity";
+import { SearchFilterBar } from "../components/ui/SearchFilterBar";
 
 const availabilityLabel: Record<string, string> = {
   DISPONIBLE: "Disponible",
@@ -40,7 +41,9 @@ export default function SearchPage() {
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [mobileView, setMobileView] = useState<"list" | "map">("list");
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const cardRefs = useRef<Record<string, HTMLElement | null>>({});
+  const filterMenuRef = useRef<HTMLDivElement | null>(null);
 
   const ownedProviderId = user?.providers?.[0]?.id || user?.providerProfileId;
 
@@ -71,12 +74,12 @@ export default function SearchPage() {
           (!cityTarget || provider.city === cityTarget) &&
           (!categoryTarget || norm(provider.category).includes(norm(categoryTarget))) &&
           (!price || provider.priceRange === price) &&
-          provider.trustScore >= trust;
+           (provider.trustScore ?? -1) >= trust;
 
         return { ...provider, match };
       })
       .filter((provider: any) => provider.match)
-      .sort((a: any, b: any) => (b.finalScore ?? b.trustScore) - (a.finalScore ?? a.trustScore));
+       .sort((a: any, b: any) => (b.trustScore ?? -1) - (a.trustScore ?? -1));
   }, [providers, city, category, price, trust, aiIntent]);
 
   const mapProviders = useMemo<SearchMapProvider[]>(() => {
@@ -87,14 +90,14 @@ export default function SearchPage() {
       city: provider.city,
       lat: provider.lat,
       lng: provider.lng,
-      trustScore: provider.trustScore,
+       trustScore: provider.trustScore,
       availabilityLabel: availabilityLabel[provider.availability] || provider.availability,
       status: provider.status,
       statusReason: provider.statusReason,
       suspendedUntil: provider.suspendedUntil,
       priceLabel: priceLabel[provider.priceRange] || provider.priceRange || "",
       verificationLabel: { UNVERIFIED: "Sin verificar", PHONE: "Teléfono verificado", COMPLETE: "Perfil verificado" }[provider.verificationLevel] || provider.verificationLevel || "Sin verificar",
-      profileSignalLabel: provider.trustScore >= 80 ? "Perfil comercial sólido" : "Perfil en construcción",
+       profileSignalLabel: provider.trustScore == null ? "Evidencia insuficiente" : provider.trustScore >= 80 ? "Perfil comercial sólido" : "Perfil en construcción",
       description: provider.shortDescription || "",
       image: provider.photos?.[0] || "",
       isOwnProfile: provider.id === ownedProviderId,
@@ -106,6 +109,24 @@ export default function SearchPage() {
       cardRefs.current[selectedId]?.scrollIntoView({ behavior: "smooth", block: "center" });
     }
   }, [selectedId]);
+
+  useEffect(() => {
+    if (!filtersOpen) return;
+
+    const closeOnOutsidePress = (event: MouseEvent) => {
+      if (!filterMenuRef.current?.contains(event.target as Node)) setFiltersOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setFiltersOpen(false);
+    };
+
+    document.addEventListener("mousedown", closeOnOutsidePress);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("mousedown", closeOnOutsidePress);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [filtersOpen]);
 
   const showInList = (id: string) => {
     setSelectedId(id);
@@ -126,11 +147,63 @@ export default function SearchPage() {
   return (
     <div className="search-page">
       <header className="search-toolbar">
-        <form onSubmit={handleSearch}>
-          <Search />
-          <input value={query} onChange={event => setQuery(event.target.value)} placeholder="¿Qué proveedor necesitás?" aria-label="Buscar proveedores" />
-          <button>Buscar</button>
-        </form>
+        <SearchFilterBar
+          value={query}
+          onChange={setQuery}
+          onSubmit={handleSearch}
+          placeholder="¿Qué proveedor necesitás?"
+          ariaLabel="Buscar proveedores"
+        />
+        <div className="search-filter-menu-wrap" ref={filterMenuRef}>
+          <button
+            type="button"
+            className="filter-toggle"
+            aria-expanded={filtersOpen}
+            aria-controls="search-filters-menu"
+            onClick={() => setFiltersOpen(value => !value)}
+          >
+            <SlidersHorizontal aria-hidden="true" />
+            <span>Filtros</span>
+            {(city || category || price || trust > 0) && <span className="filter-toggle-count">{[city, category, price, trust > 0 ? "trust" : ""].filter(Boolean).length}</span>}
+          </button>
+          {filtersOpen && (
+            <div className="filters-dropdown" id="search-filters-menu" role="dialog" aria-label="Filtros de búsqueda">
+              <div className="filters-dropdown-head">
+                <strong>Filtrar resultados</strong>
+                <button type="button" className="filter-menu-close" aria-label="Cerrar filtros" onClick={() => setFiltersOpen(false)}>
+                  <X aria-hidden="true" />
+                </button>
+              </div>
+              <aside className="filters filters-dropdown-panel" aria-label="Opciones de filtro">
+                <label>Ciudad
+                  <select value={city} onChange={event => setCity(event.target.value)}>
+                    <option value="">Todas</option>
+                    {CREATIVE_CITIES.map(item => <option key={item}>{item}</option>)}
+                  </select>
+                </label>
+                <label>Categoría
+                  <select value={category} onChange={event => setCategory(event.target.value)}>
+                    <option value="">Todas</option>
+                    {CATEGORY_OPTIONS.map(item => <option key={item}>{item}</option>)}
+                  </select>
+                </label>
+                <label>Precio
+                  <select value={price} onChange={event => setPrice(event.target.value)}>
+                    <option value="">Cualquier rango</option>
+                    {Object.entries(priceLabel).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                  </select>
+                </label>
+                <label>Confianza mínima <strong>{trust}</strong>
+                  <input type="range" min="0" max="90" step="10" value={trust} onChange={event => setTrust(Number(event.target.value))} />
+                </label>
+                <label className="check">
+                  <input type="checkbox" checked={false} onChange={() => {}} />
+                  <CalendarCheck /> Disponible ahora
+                </label>
+              </aside>
+            </div>
+          )}
+        </div>
         <div className="mobile-view-switch" aria-label="Vista de resultados">
           <button className={mobileView === "list" ? "active" : ""} onClick={() => setMobileView("list")}><List /> Lista</button>
           <button className={mobileView === "map" ? "active" : ""} onClick={() => setMobileView("map")}><Map /> Mapa</button>
@@ -138,35 +211,6 @@ export default function SearchPage() {
       </header>
 
       <div className="search-layout">
-        <aside className="filters">
-          <h2><SlidersHorizontal /> Afinar resultados</h2>
-          <label>Ciudad
-            <select value={city} onChange={event => setCity(event.target.value)}>
-              <option value="">Todas</option>
-              {CREATIVE_CITIES.map(item => <option key={item}>{item}</option>)}
-            </select>
-          </label>
-          <label>Categoría
-            <select value={category} onChange={event => setCategory(event.target.value)}>
-              <option value="">Todas</option>
-              {CATEGORY_OPTIONS.map(item => <option key={item}>{item}</option>)}
-            </select>
-          </label>
-          <label>Precio
-            <select value={price} onChange={event => setPrice(event.target.value)}>
-              <option value="">Cualquier rango</option>
-              {Object.entries(priceLabel).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-            </select>
-          </label>
-          <label>Confianza mínima <strong>{trust}</strong>
-            <input type="range" min="0" max="90" step="10" value={trust} onChange={event => setTrust(Number(event.target.value))} />
-          </label>
-          <label className="check">
-            <input type="checkbox" checked={false} onChange={() => {}} />
-            <CalendarCheck /> Disponible ahora
-          </label>
-        </aside>
-
         <main className={`results ${mobileView === "list" ? "mobile-active" : ""}`}>
           {aiIntent && (
             <section className="intent-summary" data-confidence={aiIntent.confidence}>
@@ -236,13 +280,13 @@ export default function SearchPage() {
                   )}
                   <div className="provider-body">
                     <div className="provider-title">
-                      <div>
+                      <div className="provider-title-copy">
                         <span>{provider.category}</span>
-                        <h2>{provider.displayName}</h2>
+                        <h2 className="provider-name text-truncate" title={provider.displayName}>{provider.displayName}</h2>
                       </div>
                       <TrustBadge score={provider.trustScore} />
                     </div>
-                    <p>{provider.shortDescription}</p>
+                    <p className="provider-description text-clamp-2">{provider.shortDescription}</p>
                     <div className="badges">
                       <span className="badge"><MapPin />{provider.city}</span>
                       {provider.priceRange && <PriceBadge value={provider.priceRange as any} />}

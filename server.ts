@@ -24,10 +24,17 @@ import {
   providerSuspendSchema,
   quoteMessageSchema,
   quoteUpdateSchema,
+  quoteCompletionSchema,
+  quoteAcceptanceSchema,
   reviewCreateSchema,
+  reviewUpdateSchema,
+  commercialInteractionSchema,
+  privateFeedbackSchema,
   riskReportEscalateSchema,
   riskReportQuerySchema,
   riskReportStatusSchema,
+  moderationApprovalActionSchema,
+  moderationApprovalDecisionSchema,
 } from "./src/lib/api-schema";
 import {
   hashPassword,
@@ -41,9 +48,16 @@ import {
   getRefreshTokenFromRequest,
   getRefreshTokenExpiryDate,
   generateSecureToken,
+  setOAuthStateCookie,
+  COOKIES,
   type TokenPayload,
 } from "./src/lib/auth";
 import { prisma } from "./src/lib/db";
+import cron from "node-cron";
+import { resolveExpiredQuotes } from "./src/lib/cron/resolve-expired-quotes";
+import { recalculateProviderTrustScore } from "./src/lib/trust-score-service";
+import { analyzeProviderRisk } from "./src/lib/risk-telemetry-service";
+import { checkReviewEligibility, isReviewEditable } from "./src/domain/requests/reviewRules";
 import {
   searchProviders,
   getFullProviderByIdOrSlug,
@@ -68,14 +82,35 @@ import {
   getThreadById,
   addMessage,
   updateThread,
+  updateThreadWithLocking,
+  ConcurrencyError,
+  rejectCompletion,
+  withdrawCompletion,
+  validateNotExpired,
 } from "./src/lib/quotes-service";
+import { emitRequestEvent } from "./src/lib/request-events-service.js";
+import { createReputationEvidence } from "./src/lib/reputation-events-service.js";
+import { createLogger } from "./src/lib/logger.js";
 
+const log = createLogger('Server');
 
+function assertProductionEnv(): void {
+  if (process.env.NODE_ENV !== 'production') return;
+  const required = ['DATABASE_URL', 'DIRECT_URL', 'JWT_SECRET', 'JWT_REFRESH_SECRET', 'APP_URL'];
+  const missing = required.filter((key) => !process.env[key] || process.env[key] === '');
+  if (missing.length > 0) {
+    throw new Error(`Missing required production environment variables: ${missing.join(', ')}`);
+  }
+}
 
 function normalizeAvailability(value: unknown): Availability {
   return Object.values(Availability).includes(value as Availability) ? value as Availability : Availability.DISPONIBLE;
 }
 
+/**
+ * @deprecated Decision D-17: formalizationStatus is a RESERVED field.
+ * This function remains for seed compatibility but has no MVP effect.
+ */
 function normalizeFormalizationStatus(value: unknown): FormalizationStatus {
   return Object.values(FormalizationStatus).includes(value as FormalizationStatus) ? value as FormalizationStatus : FormalizationStatus.INFORMAL;
 }
@@ -129,8 +164,9 @@ async function ensureCategoryReference(name: string, parentCategoryId?: string |
 }
 
 async function startServer() {
+  assertProductionEnv();
   const app = express();
-  const PORT = 3000;
+  const PORT = Number(process.env.PORT) || 3000;
 
   // Body Parsing Middleware
   app.use(express.json());
@@ -147,6 +183,63 @@ async function startServer() {
       return res.status(401).json({ success: false, error: "Sesión expirada" });
     }
     req.user = payload;
+    next();
+  };
+
+  // === IDEMPOTENCY MIDDLEWARE ===
+  interface IdempotencyCache {
+    response: any;
+    statusCode: number;
+    timestamp: number;
+  }
+
+  const idempotencyStore = new Map<string, IdempotencyCache>();
+  const IDEMPOTENCY_TTL_MS = 24 * 60 * 60 * 1000;
+
+  function cleanupExpiredIdempotencyKeys() {
+    const now = Date.now();
+    for (const [key, value] of idempotencyStore.entries()) {
+      if (now - value.timestamp > IDEMPOTENCY_TTL_MS) {
+        idempotencyStore.delete(key);
+      }
+    }
+  }
+
+  setInterval(cleanupExpiredIdempotencyKeys, 60 * 60 * 1000);
+
+  const idempotencyMiddleware = (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    const idempotencyKey = req.headers['idempotency-key'] as string;
+    
+    if (!idempotencyKey) {
+      return next();
+    }
+
+    const cached = idempotencyStore.get(idempotencyKey);
+    if (cached) {
+      log.info('Idempotent request detected, returning cached response', {
+        key: idempotencyKey,
+        method: req.method,
+        path: req.path,
+      });
+      return res.status(cached.statusCode).json(cached.response);
+    }
+
+    const originalJson = res.json.bind(res);
+    res.json = function(body: any) {
+      if (res.statusCode >= 200 && res.statusCode < 300) {
+        idempotencyStore.set(idempotencyKey, {
+          response: body,
+          statusCode: res.statusCode,
+          timestamp: Date.now(),
+        });
+        log.info('Cached idempotent response', {
+          key: idempotencyKey,
+          statusCode: res.statusCode,
+        });
+      }
+      return originalJson(body);
+    };
+
     next();
   };
 
@@ -205,7 +298,7 @@ async function startServer() {
   };
 
   async function createModerationAuditLog(data: {
-    actorUserId: string;
+    actorUserId?: string | null;
     action: string;
     targetType: string;
     targetId: string;
@@ -214,13 +307,52 @@ async function startServer() {
   }) {
     return prisma.moderationAuditLog.create({
       data: {
-        actor: { connect: { id: data.actorUserId } },
+        ...(data.actorUserId
+          ? { actor: { connect: { id: data.actorUserId } } }
+          : { actorUserId: null }),
         action: data.action,
         targetType: data.targetType,
         targetId: data.targetId,
         reason: data.reason,
         metadata: data.metadata as Prisma.InputJsonValue | undefined,
       },
+    });
+  }
+
+  async function expirePendingModerationApprovals(now = new Date()): Promise<number> {
+    const candidates = await prisma.moderationActionApproval.findMany({
+      where: { status: "PENDING", expiresAt: { lte: now } },
+      select: { id: true, action: true, targetId: true },
+    });
+    if (candidates.length === 0) return 0;
+
+    return prisma.$transaction(async (tx) => {
+      let expiredCount = 0;
+      for (const approval of candidates) {
+        const expired = await tx.moderationActionApproval.updateMany({
+          where: { id: approval.id, status: "PENDING", expiresAt: { lte: now } },
+          data: { status: "EXPIRED" },
+        });
+        if (expired.count !== 1) continue;
+
+        await tx.moderationAuditLog.create({
+          data: {
+            actorUserId: null,
+            action: "MODERATION_APPROVAL_EXPIRED",
+            targetType: "PROVIDER",
+            targetId: approval.targetId,
+            reason: "La aprobación superó su ventana de validez",
+            metadata: {
+              approvalId: approval.id,
+              action: approval.action,
+              expirationMode: "SYSTEM_SWEEP",
+              actorType: "SYSTEM",
+            } as Prisma.InputJsonValue,
+          },
+        });
+        expiredCount += 1;
+      }
+      return expiredCount;
     });
   }
 
@@ -521,26 +653,31 @@ async function startServer() {
   // GET /api/auth/google — initiate OAuth
   app.get("/api/auth/google", (req, res) => {
     const clientId = process.env.GOOGLE_CLIENT_ID;
+    const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
     const appUrl = process.env.APP_URL || "http://localhost:3000";
 
-    if (!clientId) {
+    if (!clientId || !clientSecret) {
       return res.status(503).json({
         success: false,
-        error: "OAuth con Google no está configurado",
+        error:
+          "El acceso con Google no está disponible por ahora. El administrador debe configurar las credenciales de Google (GOOGLE_CLIENT_ID y GOOGLE_CLIENT_SECRET).",
       });
     }
 
     const redirectUri = `${appUrl}/api/auth/google/callback`;
-    const scope = encodeURIComponent("openid email profile");
+    const state = generateSecureToken();
+
+    setOAuthStateCookie(res, state);
 
     const authUrl = [
       "https://accounts.google.com/o/oauth2/v2/auth",
-      `?client_id=${clientId}`,
+      `?client_id=${encodeURIComponent(clientId)}`,
       `&redirect_uri=${encodeURIComponent(redirectUri)}`,
       "&response_type=code",
       "&scope=openid email profile",
       "&access_type=offline",
       "&prompt=consent",
+      `&state=${encodeURIComponent(state)}`,
     ].join("");
 
     res.redirect(authUrl);
@@ -548,11 +685,25 @@ async function startServer() {
 
   // GET /api/auth/google/callback — handle OAuth
   app.get("/api/auth/google/callback", async (req, res) => {
-    const { code, error } = req.query;
+    const { code, error, state } = req.query;
     const appUrl = process.env.APP_URL || "http://localhost:3000";
 
-    if (error || !code) {
-      return res.redirect(`${appUrl}/auth/login?error=oauth_failed`);
+    const redirectToLogin = (errorCode: string) =>
+      res.redirect(`${appUrl}/auth/login?error=${errorCode}`);
+
+    if (error) {
+      return redirectToLogin("oauth_cancelled");
+    }
+
+    if (!code) {
+      return redirectToLogin("oauth_failed");
+    }
+
+    const expectedState = req.cookies?.[COOKIES.OAUTH_STATE];
+    res.clearCookie(COOKIES.OAUTH_STATE, { path: "/" });
+
+    if (!expectedState || typeof state !== "string" || state !== expectedState) {
+      return redirectToLogin("oauth_state_invalid");
     }
 
     try {
@@ -573,17 +724,25 @@ async function startServer() {
       });
 
       if (!tokenResponse.ok) {
-        return res.redirect(`${appUrl}/auth/login?error=oauth_token_failed`);
+        return redirectToLogin("oauth_token_failed");
       }
 
-      const tokenData = await tokenResponse.json() as { id_token: string };
+      const tokenData = await tokenResponse.json() as {
+        access_token: string;
+        refresh_token?: string;
+        expires_in?: number;
+        scope?: string;
+        token_type?: string;
+        id_token?: string;
+      };
+
       const userInfoResponse = await fetch(
         "https://www.googleapis.com/oauth2/v2/userinfo",
-        { headers: { Authorization: `Bearer ${tokenData.id_token}` } }
+        { headers: { Authorization: `Bearer ${tokenData.access_token}` } }
       );
 
       if (!userInfoResponse.ok) {
-        return res.redirect(`${appUrl}/auth/login?error=oauth_userinfo_failed`);
+        return redirectToLogin("oauth_userinfo_failed");
       }
 
       const googleUser = await userInfoResponse.json() as {
@@ -595,7 +754,16 @@ async function startServer() {
 
       let user = await prisma.user.findUnique({ where: { email: googleUser.email } });
 
-      if (!user) {
+      if (user) {
+        user = await prisma.user.update({
+          where: { id: user.id },
+          data: {
+            name: googleUser.name || undefined,
+            image: googleUser.picture || undefined,
+            emailVerified: user.emailVerified ?? new Date(),
+          },
+        });
+      } else {
         user = await prisma.user.create({
           data: {
             email: googleUser.email,
@@ -613,12 +781,26 @@ async function startServer() {
             providerAccountId: googleUser.id,
           },
         },
-        update: {},
+        update: {
+          access_token: tokenData.access_token,
+          ...(tokenData.refresh_token ? { refresh_token: tokenData.refresh_token } : {}),
+          ...(tokenData.expires_in ? { expires_at: Math.floor(Date.now() / 1000) + tokenData.expires_in } : {}),
+          ...(tokenData.scope ? { scope: tokenData.scope } : {}),
+          ...(tokenData.token_type ? { token_type: tokenData.token_type } : {}),
+          ...(tokenData.id_token ? { id_token: tokenData.id_token } : {}),
+        },
         create: {
           userId: user.id,
           provider: "google",
           providerAccountId: googleUser.id,
-          access_token: tokenData.id_token,
+          access_token: tokenData.access_token,
+          refresh_token: tokenData.refresh_token ?? null,
+          expires_at: tokenData.expires_in
+            ? Math.floor(Date.now() / 1000) + tokenData.expires_in
+            : null,
+          token_type: tokenData.token_type ?? null,
+          scope: tokenData.scope ?? null,
+          id_token: tokenData.id_token ?? null,
         },
       });
 
@@ -648,11 +830,15 @@ async function startServer() {
     }
   });
 
-  // GET /api/auth/google/callback (alternative: query param error) handled above
-
   // === API ROUTES (Mounted FIRST) ===
-  app.get("/api/health", (req, res) => {
-    res.json({ status: "ok", timestamp: new Date().toISOString() });
+  app.get("/api/health", async (req, res) => {
+    try {
+      await prisma.$queryRaw`SELECT 1`;
+      res.json({ status: "ok", database: "ok", timestamp: new Date().toISOString() });
+    } catch (error) {
+      log.error("Health check database failure", { error });
+      res.status(503).json({ status: "error", database: "unreachable", timestamp: new Date().toISOString() });
+    }
   });
 
   // GET Providers Search
@@ -740,6 +926,45 @@ async function startServer() {
     }
   });
 
+  // Public trust score never exposes the internal score used for auditing.
+  app.get("/api/providers/:id/trust-score", async (req, res) => {
+    try {
+      const provider = await prisma.provider.findFirst({
+        where: { OR: [{ id: req.params.id }, { slug: req.params.id }] },
+        select: {
+          metrics: {
+            select: {
+              publicTrustScore: true,
+              evidenceLevel: true,
+              bilateralCompletions: true,
+              algorithmVersion: true,
+              publicScoreFrozen: true,
+              growthHold: true,
+            },
+          },
+        },
+      });
+      if (!provider) return res.status(404).json({ success: false, error: "Proveedor no encontrado" });
+
+      const metrics = provider.metrics;
+      return res.json({
+        success: true,
+        data: {
+          trustScore: metrics?.publicTrustScore ?? null,
+          publicScore: metrics?.publicTrustScore ?? null,
+          evidenceLevel: metrics?.evidenceLevel ?? "INSUFFICIENT_EVIDENCE",
+          bilateralCompletions: metrics?.bilateralCompletions ?? 0,
+          algorithmVersion: metrics?.algorithmVersion ?? "trust-v2.0.0",
+          publicScoreFrozen: metrics?.publicScoreFrozen ?? false,
+          growthHold: metrics?.growthHold ?? false,
+        },
+      });
+    } catch (error) {
+      console.error("Get public trust score error:", error);
+      return res.status(500).json({ success: false, error: "No se pudo obtener la confianza pública" });
+    }
+  });
+
   // GET Provider by id OR slug (spec §26.1)
   app.get("/api/providers/:id", async (req, res) => {
     try {
@@ -822,7 +1047,7 @@ async function startServer() {
   });
 
   // POST Generate AI Quote Draft (Left intact as it hits external API or mocked local)
-  app.post("/api/quotes/draft", async (req, res) => {
+  app.post("/api/quotes/draft", authenticate, async (req, res) => {
     try {
       const parsed = quoteDraftRequestSchema.safeParse(req.body);
       if (!parsed.success) {
@@ -838,7 +1063,7 @@ async function startServer() {
   });
 
   // POST Request Quote — creates a new quote thread
-  app.post("/api/quotes", authenticate, async (req, res) => {
+  app.post("/api/quotes", authenticate, idempotencyMiddleware, async (req, res) => {
     try {
       const parsed = quoteRequestSchema.safeParse(req.body);
 
@@ -930,6 +1155,13 @@ async function startServer() {
         return res.status(403).json({ success: false, error: "No participás en esta solicitud" });
       }
 
+      if (thread.closure_outcome !== null) {
+        return res.status(403).json({ 
+          success: false,
+          error: "Esta conversación está cerrada. No se pueden enviar más mensajes." 
+        });
+      }
+
       const newMsg = await addMessage(threadId, {
         authorId: userId,
         authorRole: role,
@@ -968,7 +1200,7 @@ async function startServer() {
         return res.status(403).json({ success: false, error: "No participás en esta solicitud" });
       }
 
-      if ((quotedPriceLabel !== undefined || quotedDeliveryTime !== undefined || status === "QUOTE_SENT") && role !== "provider") {
+      if ((quotedPriceLabel !== undefined || quotedDeliveryTime !== undefined) && role !== "provider") {
         return res.status(403).json({ success: false, error: "Solo el proveedor puede enviar una cotización" });
       }
 
@@ -978,10 +1210,6 @@ async function startServer() {
 
       if (confirmedByProviderAt && role !== "provider") {
         return res.status(403).json({ success: false, error: "Solo el proveedor puede confirmar esta parte" });
-      }
-
-      if (status === "QUOTE_ACCEPTED" && role !== "client") {
-        return res.status(403).json({ success: false, error: "Solo el solicitante puede aceptar la cotización" });
       }
 
       if (status === "CLOSED_PROVIDER" && role !== "provider") {
@@ -1000,10 +1228,374 @@ async function startServer() {
         confirmedByProviderAt: Boolean(confirmedByProviderAt),
       });
 
+      // ✅ Auditoría: cada cotización enviada por el proveedor se agrega al historial (append-only)
+      if ((quotedPriceLabel !== undefined || quotedDeliveryTime !== undefined) && role === "provider") {
+        const currentHistory = (thread.quotationHistory as any[] | null) || [];
+        await prisma.quoteThread.update({
+          where: { id: threadId },
+          data: {
+            quotationHistory: [
+              ...currentHistory,
+              {
+                price: quotedPriceLabel ?? thread.quotedPriceLabel,
+                delivery: quotedDeliveryTime ?? thread.quotedDeliveryTime,
+                providerId: userId,
+                timestamp: new Date().toISOString(),
+              },
+            ],
+          },
+        });
+      }
+
       res.json({ success: true, data: updated });
     } catch (error) {
       console.error("Update quote error:", error);
       res.status(500).json({ success: false, error: "Error al actualizar cotización" });
+    }
+  });
+
+  app.patch("/api/quotes/:id/complete", authenticate, idempotencyMiddleware, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { userId } = req.user;
+      const parsed = quoteCompletionSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ success: false, error: "Datos inválidos", details: parsed.error.issues });
+      }
+      const { role, version } = parsed.data;
+
+      const { thread, role: participantRole } = await getThreadParticipantRole(id, userId);
+      if (!thread) return res.status(404).json({ success: false, error: "Solicitud no encontrada" });
+      if (!participantRole) return res.status(403).json({ success: false, error: "No participás en esta solicitud" });
+
+      const mappedRole = participantRole === "client" ? "REQUESTER" : "PROVIDER";
+      if (mappedRole !== role) return res.status(403).json({ success: false, error: `Tu rol es ${mappedRole}, no ${role}` });
+      if (thread.workflow_phase === "CLOSED") return res.status(400).json({ success: false, error: "Esta solicitud ya está cerrada" });
+
+      try {
+        await validateNotExpired(id);
+      } catch (error: any) {
+        if (error.message === 'TIMEOUT_ALREADY_RESOLVED') {
+          return res.status(409).json({
+            success: false,
+            error: "La ventana de 72 horas expiró; la solicitud se cerrará automáticamente",
+          });
+        }
+        throw error;
+      }
+
+      await prisma.$transaction(async (tx) => {
+        // Re-read thread inside transaction to get latest state
+        const freshThread = await tx.quoteThread.findUnique({
+          where: { id },
+          select: {
+            confirmedByRequesterAt: true,
+            confirmedByProviderAt: true,
+            workflow_phase: true,
+          },
+        });
+
+        if (!freshThread) {
+          throw new Error('Thread not found');
+        }
+
+        const dbTimeResult = await tx.$queryRaw<Array<{ now: Date; deadline: Date }>>`
+          SELECT NOW() as now, NOW() + INTERVAL '72 hours' as deadline
+        `;
+        const { now, deadline } = dbTimeResult[0];
+        const updateData: any = { workflow_phase: "COMPLETION_PENDING", completionDeadline: deadline };
+
+        if (role === "REQUESTER") updateData.confirmedByRequesterAt = now;
+        else updateData.confirmedByProviderAt = now;
+
+        // Check if the other participant already confirmed (using fresh data from transaction)
+        const otherConfirmed =
+          (role === "REQUESTER" && freshThread.confirmedByProviderAt) ||
+          (role === "PROVIDER" && freshThread.confirmedByRequesterAt);
+
+        if (otherConfirmed) {
+          updateData.workflow_phase = "CLOSED";
+          updateData.closure_outcome = "BILATERAL";
+          updateData.completedAt = now;
+        }
+
+        updateData.status = otherConfirmed ? "COMPLETED" : "IN_CONVERSATION";
+
+        if (!thread.completionInitiatorUserId) {
+          updateData.completionInitiatorUserId = userId;
+        }
+
+        if (version !== undefined) {
+          await updateThreadWithLocking(id, version, updateData, tx);
+        } else {
+          await tx.quoteThread.update({ where: { id }, data: updateData });
+        }
+
+        if (otherConfirmed) {
+          const completionEvent = await emitRequestEvent(prisma, {
+            requestId: id,
+            eventType: 'COMPLETION_CONFIRMED',
+            actorUserId: userId,
+            completionCycleNo: thread.cycleNo || 0,
+            metadata: { bilateralCompletion: true },
+            tx,
+          });
+
+          await createReputationEvidence(prisma, {
+            providerId: thread.providerId,
+            requestId: id,
+            evidenceType: 'BILATERAL_COMPLETION',
+            evidenceWeight: 1.0,
+            sourceEventId: completionEvent.id,
+            tx,
+          });
+
+          log.info('Bilateral completion confirmed', { threadId: id, userId });
+        } else {
+          await emitRequestEvent(prisma, {
+            requestId: id,
+            eventType: 'COMPLETION_REQUESTED',
+            actorUserId: userId,
+            completionCycleNo: thread.cycleNo || 0,
+            metadata: { actor: role === "REQUESTER" ? "requester" : "provider" },
+            tx,
+          });
+
+          log.info('Completion requested', { threadId: id, userId, role });
+        }
+      });
+
+      const message = thread.confirmedByRequesterAt || thread.confirmedByProviderAt
+        ? "¡Trabajo confirmado! Ambas partes confirmaron el cierre."
+        : "Confirmación registrada. Se activó ventana de 72h para que la otra parte confirme.";
+
+      if (thread.confirmedByRequesterAt && thread.confirmedByProviderAt) {
+        recalculateProviderTrustScore(thread.providerId)
+          .catch((err) => log.error("[TrustScore] Recalc failed", { error: err }));
+        
+        analyzeProviderRisk(thread.providerId)
+          .catch((err) => log.error("[RiskTelemetry] Analysis failed", { error: err }));
+      }
+
+      res.json({ success: true, message });
+    } catch (error) {
+      if (error instanceof ConcurrencyError) {
+        return res.status(409).json({ success: false, error: error.message });
+      }
+      log.error("Complete quote error", { error });
+      res.status(500).json({ success: false, error: "Error al confirmar cierre" });
+    }
+  });
+
+  // Sprint 6.1.3: Endpoint para proveedor declinar solicitud (antes de interactuar)
+  app.post("/api/quotes/:id/decline", authenticate, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { userId } = req.user;
+      const { reason } = req.body;
+
+      const thread = await prisma.quoteThread.findUnique({
+        where: { id },
+        include: { 
+          messages: true,
+          provider: true
+        }
+      });
+
+      if (!thread) {
+        return res.status(404).json({ error: 'Solicitud no encontrada' });
+      }
+
+      // Validar que el usuario es el proveedor
+      if (thread.provider.userId !== userId) {
+        return res.status(403).json({ error: 'Solo el proveedor puede declinar esta solicitud' });
+      }
+
+      // Validar que NO haya interacción previa del proveedor
+      const quotationHistory = thread.quotationHistory as any[] || [];
+      const hasProviderInteraction = 
+        thread.messages.some(m => m.authorId === userId) || 
+        quotationHistory.length > 0;
+
+      if (hasProviderInteraction) {
+        return res.status(400).json({ 
+          error: 'No se puede declinar tras interacción. Usá cancelación en su lugar.' 
+        });
+      }
+
+      // Validar que no esté ya cerrado
+      if (thread.workflow_phase === 'CLOSED') {
+        return res.status(400).json({ error: 'Esta solicitud ya está cerrada' });
+      }
+
+      // Transacción atómica: cerrar thread + emitir evento
+      await prisma.$transaction(async (tx) => {
+        await tx.quoteThread.update({
+          where: { id },
+          data: {
+            workflow_phase: 'CLOSED',
+            closure_outcome: 'DECLINED_BY_PROVIDER'
+          }
+        });
+
+        await emitRequestEvent(prisma, {
+          requestId: id,
+          eventType: 'REQUEST_DECLINED',
+          actorUserId: userId,
+          metadata: { reason: reason || 'No especificada' },
+          tx
+        });
+      });
+
+      log.info('Request declined by provider', { threadId: id, providerId: thread.providerId, reason });
+
+      res.json({ 
+        success: true, 
+        message: 'Solicitud declinada exitosamente' 
+      });
+    } catch (error: any) {
+      log.error('Error declining request', { error: error.message });
+      res.status(500).json({ error: 'Error al declinar solicitud' });
+    }
+  });
+
+  app.post("/api/quotes/:id/reject-completion", authenticate, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { note } = req.body;
+      const { userId } = req.user;
+
+      const thread = await prisma.quoteThread.findUnique({
+        where: { id },
+        select: { senderId: true, providerId: true }
+      });
+
+      if (!thread) {
+        return res.status(404).json({ error: 'Thread no encontrado' });
+      }
+
+      const isParticipant = userId === thread.senderId || userId === thread.providerId;
+      if (!isParticipant) {
+        return res.status(403).json({ error: 'No sos parte de esta conversación' });
+      }
+
+      await rejectCompletion(id, userId, note);
+
+      res.json({ success: true });
+    } catch (error: any) {
+      if (error.message === 'TIMEOUT_ALREADY_RESOLVED') {
+        return res.status(409).json({
+          error: 'La ventana de 72 horas expiró; la solicitud se cerrará automáticamente'
+        });
+      }
+      if (error.message.includes('esperar') || error.message.includes('mensaje')) {
+        return res.status(400).json({ error: error.message });
+      }
+      if (error.message.includes('no puede rechazar')) {
+        return res.status(403).json({ error: error.message });
+      }
+      log.error('Error rejecting completion', { error: error.message });
+      res.status(500).json({ error: 'Error al rechazar cierre' });
+    }
+  });
+
+  app.post("/api/quotes/:id/withdraw-completion", authenticate, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { userId } = req.user;
+
+      const thread = await prisma.quoteThread.findUnique({
+        where: { id },
+        select: { senderId: true, providerId: true }
+      });
+
+      if (!thread) {
+        return res.status(404).json({ error: 'Thread no encontrado' });
+      }
+
+      const isParticipant = userId === thread.senderId || userId === thread.providerId;
+      if (!isParticipant) {
+        return res.status(403).json({ error: 'No sos parte de esta conversación' });
+      }
+
+      await withdrawCompletion(id, userId);
+
+      res.json({ success: true });
+    } catch (error: any) {
+      if (error.message === 'TIMEOUT_ALREADY_RESOLVED') {
+        return res.status(409).json({
+          error: 'La ventana de 72 horas expiró; la solicitud se cerrará automáticamente'
+        });
+      }
+      if (error.message.includes('iniciador')) {
+        return res.status(403).json({ error: error.message });
+      }
+      log.error('Error withdrawing completion', { error: error.message });
+      res.status(500).json({ error: 'Error al retirar solicitud de cierre' });
+    }
+  });
+
+  app.post("/api/quotes/:id/accept-quotation", authenticate, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { userId } = req.user;
+      const parsed = quoteAcceptanceSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ success: false, error: "Datos inválidos", details: parsed.error.issues });
+      }
+
+      const { thread, role } = await getThreadParticipantRole(id, userId);
+      if (!thread) return res.status(404).json({ success: false, error: "Solicitud no encontrada" });
+      if (!role) return res.status(403).json({ success: false, error: "No participás en esta solicitud" });
+
+      if (role !== "client") {
+        return res.status(403).json({ success: false, error: "Solo el cliente puede aceptar la cotización" });
+      }
+
+      if (thread.acceptedQuotation) {
+        return res.status(400).json({ success: false, error: "La cotización ya fue aceptada" });
+      }
+
+      if (!thread.quotedPriceLabel) {
+        return res.status(400).json({ success: false, error: "No hay cotización para aceptar" });
+      }
+
+      const acceptedQuotation = {
+        price: thread.quotedPriceLabel,
+        delivery: thread.quotedDeliveryTime,
+        acceptedAt: new Date().toISOString(),
+        acceptedBy: userId,
+      };
+
+      await prisma.$transaction(async (tx) => {
+        await tx.quoteThread.update({
+          where: { id },
+          data: { acceptedQuotation },
+        });
+
+        await emitRequestEvent(prisma, {
+          requestId: id,
+          eventType: 'QUOTE_ACCEPTED',
+          actorUserId: userId,
+          metadata: {
+            price: thread.quotedPriceLabel,
+            delivery: thread.quotedDeliveryTime,
+          },
+          tx,
+        });
+
+        log.info('Quote accepted event emitted', { threadId: id, userId });
+      });
+
+      const updated = await prisma.quoteThread.findUnique({
+        where: { id },
+        select: { acceptedQuotation: true },
+      });
+
+      res.json({ success: true, acceptedQuotation: updated?.acceptedQuotation });
+    } catch (error) {
+      log.error("Accept quotation error", { error });
+      res.status(500).json({ success: false, error: "Error al aceptar cotización" });
     }
   });
 
@@ -1027,19 +1619,72 @@ async function startServer() {
     reviewedBy: { select: { id: true, name: true, email: true } },
     escalatedBy: { select: { id: true, name: true, email: true } },
     resolvedBy: { select: { id: true, name: true, email: true } },
+    signalEvidence: {
+      select: {
+        id: true,
+        signalKey: true,
+        observedValue: true,
+        threshold: true,
+        contribution: true,
+        windowStart: true,
+         windowEnd: true,
+         sourceRecordIds: true,
+         algorithmVersion: true,
+      },
+      orderBy: { createdAt: "desc" },
+    },
   } as const;
+
+  function toRiskReportDto(report: any) {
+    return {
+      id: report.id,
+      providerId: report.providerId,
+      provider: report.provider,
+      riskScore: report.riskScore,
+      riskLevel: report.riskLevel,
+      penalty: report.penalty,
+      algorithmVersion: report.algorithmVersion,
+      signals: {
+        suspiciousCyclesCount: report.suspiciousCyclesCount,
+        avgSearchTimeSeconds: report.avgSearchTimeSeconds,
+        avgRequestToCompletionMinutes: report.avgRequestToCompletionMinutes,
+        avgMessagesPerRequest: report.avgMessagesPerRequest,
+        newAccountsPercentage: report.newAccountsPercentage,
+        ratingConcentrationScore: report.ratingConcentrationScore,
+      },
+      signalEvidence: report.signalEvidence,
+      status: report.status,
+      reviewerNotes: report.reviewerNotes,
+      recommendedAction: report.recommendedAction,
+      generatedAt: report.generatedAt,
+      reviewedAt: report.reviewedAt,
+      escalatedAt: report.escalatedAt,
+      resolvedAt: report.resolvedAt,
+      reviewedBy: report.reviewedBy,
+      escalatedBy: report.escalatedBy,
+      resolvedBy: report.resolvedBy,
+    };
+  }
 
   app.get("/api/admin/risk-reports", authenticate, requireAdminReviewerOrSuperAdmin, async (req, res) => {
     try {
       const parsed = riskReportQuerySchema.safeParse(req.query);
       if (!parsed.success) return res.status(400).json({ success: false, error: "Filtro de estado inválido", details: parsed.error.issues });
       const { status } = parsed.data;
-      const reports = await prisma.riskReport.findMany({
+       const reports = await prisma.riskReport.findMany({
         where: status ? { status } : undefined,
         include: riskReportInclude,
-        orderBy: [{ status: "asc" }, { generatedAt: "desc" }],
-      });
-      res.json({ success: true, data: reports });
+         orderBy: [{ status: "asc" }, { generatedAt: "desc" }],
+       });
+       await createModerationAuditLog({
+         actorUserId: req.user.userId,
+         action: "RISK_REPORTS_ACCESSED",
+         targetType: "RISK_REPORT_COLLECTION",
+         targetId: status ?? "ALL",
+         reason: "Acceso administrativo a reportes de riesgo",
+         metadata: { status: status ?? null, resultCount: reports.length },
+       });
+        res.json({ success: true, data: reports.map(toRiskReportDto) });
     } catch (error) {
       console.error("Admin reports error:", error);
       res.status(500).json({ success: false, error: "Error al obtener reportes" });
@@ -1052,8 +1697,16 @@ async function startServer() {
         where: { id: req.params.id },
         include: riskReportInclude,
       });
-      if (!report) return res.status(404).json({ success: false, error: "Reporte no encontrado" });
-      res.json({ success: true, data: report });
+       if (!report) return res.status(404).json({ success: false, error: "Reporte no encontrado" });
+       await createModerationAuditLog({
+         actorUserId: req.user.userId,
+         action: "RISK_REPORT_ACCESSED",
+         targetType: "RISK_REPORT",
+         targetId: report.id,
+         reason: "Acceso administrativo al detalle de un reporte de riesgo",
+         metadata: { providerId: report.providerId },
+       });
+        res.json({ success: true, data: toRiskReportDto(report) });
     } catch (error) {
       console.error("Admin report detail error:", error);
       res.status(500).json({ success: false, error: "Error al obtener el reporte" });
@@ -1076,6 +1729,18 @@ async function startServer() {
         return res.status(400).json({ success: false, error: "Agregá una razón o nota para esta decisión" });
       }
 
+      const currentReport = await prisma.riskReport.findUnique({
+        where: { id: req.params.id },
+        select: { id: true, providerId: true, status: true, penalty: true },
+      });
+      if (!currentReport) return res.status(404).json({ success: false, error: "Reporte no encontrado" });
+      if (currentReport.status === "ACTION_TAKEN") {
+        return res.status(409).json({ success: false, error: "Este reporte ya tiene una acción confirmada" });
+      }
+      if (currentReport.status === status) {
+        return res.status(409).json({ success: false, error: "El reporte ya se encuentra en ese estado" });
+      }
+
       const updateData: Record<string, unknown> = {
         status,
         reviewerNotes: reviewerNotes?.trim() || reason?.trim() || null,
@@ -1093,23 +1758,52 @@ async function startServer() {
         updateData.resolvedByUserId = userId;
       }
 
-      const report = await prisma.riskReport.update({
-        where: { id: req.params.id },
-        data: updateData,
-        include: riskReportInclude,
+      const report = await prisma.$transaction(async (tx) => {
+        const claimed = await tx.riskReport.updateMany({
+          where: { id: req.params.id, status: currentReport.status },
+          data: updateData,
+        });
+        if (claimed.count !== 1) throw new Error("REPORT_ALREADY_PROCESSED");
+
+        const updatedReport = await tx.riskReport.findUniqueOrThrow({
+          where: { id: req.params.id },
+          include: riskReportInclude,
+        });
+
+        if (status === "ACTION_TAKEN" && currentReport.penalty > 0) {
+          await createReputationEvidence(tx, {
+            providerId: currentReport.providerId,
+            riskReportId: currentReport.id,
+            evidenceType: "PENALTY_SUSPICIOUS_ACTIVITY",
+            evidenceWeight: currentReport.penalty,
+            algorithmVersion: "trust-v2.0.0",
+            tx,
+          });
+        }
+
+        await tx.moderationAuditLog.create({
+          data: {
+            actorUserId: userId,
+            action: `REPORT_${status}`,
+            targetType: "RISK_REPORT",
+            targetId: updatedReport.id,
+            reason: reason?.trim() || reviewerNotes?.trim() || `Reporte marcado como ${status}`,
+            metadata: { providerId: updatedReport.providerId, status },
+          },
+        });
+
+        return updatedReport;
       });
 
-      await createModerationAuditLog({
-        actorUserId: userId,
-        action: `REPORT_${status}`,
-        targetType: "RISK_REPORT",
-        targetId: report.id,
-        reason: reason?.trim() || reviewerNotes?.trim() || `Reporte marcado como ${status}`,
-        metadata: { providerId: report.providerId, status },
-      });
+      if (["DISMISSED", "ESCALATED", "ACTION_TAKEN"].includes(status)) {
+        await recalculateProviderTrustScore(currentReport.providerId);
+      }
 
-      res.json({ success: true, data: report });
+      res.json({ success: true, data: toRiskReportDto(report) });
     } catch (error) {
+      if ((error as Error).message === "REPORT_ALREADY_PROCESSED") {
+        return res.status(409).json({ success: false, error: "Este reporte ya fue actualizado por otra revisión" });
+      }
       console.error("Update risk report status error:", error);
       res.status(500).json({ success: false, error: "Error al actualizar el reporte" });
     }
@@ -1123,30 +1817,43 @@ async function startServer() {
       const { reviewerNotes, reason } = parsed.data;
       const note = (reviewerNotes?.trim() || reason?.trim())!;
 
-      const report = await prisma.riskReport.update({
-        where: { id: req.params.id },
-        data: {
-          status: "ESCALATED",
-          reviewerNotes: note,
-          reviewedAt: new Date(),
-          reviewedByUserId: userId,
-          escalatedAt: new Date(),
-          escalatedByUserId: userId,
-        },
-        include: riskReportInclude,
+      const report = await prisma.$transaction(async (tx) => {
+        const claimed = await tx.riskReport.updateMany({
+          where: { id: req.params.id, status: { in: ["OPEN", "UNDER_REVIEW"] } },
+          data: {
+            status: "ESCALATED",
+            reviewerNotes: note,
+            reviewedAt: new Date(),
+            reviewedByUserId: userId,
+            escalatedAt: new Date(),
+            escalatedByUserId: userId,
+          },
+        });
+        if (claimed.count !== 1) throw new Error("REPORT_ALREADY_PROCESSED");
+        const escalated = await tx.riskReport.findUniqueOrThrow({
+          where: { id: req.params.id },
+          include: riskReportInclude,
+        });
+        await tx.moderationAuditLog.create({
+          data: {
+            actorUserId: userId,
+            action: "REPORT_ESCALATED",
+            targetType: "RISK_REPORT",
+            targetId: escalated.id,
+            reason: note,
+            metadata: { providerId: escalated.providerId, status: "ESCALATED" },
+          },
+        });
+        return escalated;
       });
 
-      await createModerationAuditLog({
-        actorUserId: userId,
-        action: "REPORT_ESCALATED",
-        targetType: "RISK_REPORT",
-        targetId: report.id,
-        reason: note,
-        metadata: { providerId: report.providerId, status: "ESCALATED" },
-      });
+      await recalculateProviderTrustScore(report.providerId);
 
-      res.json({ success: true, data: report });
+      res.json({ success: true, data: toRiskReportDto(report) });
     } catch (error) {
+      if ((error as Error).message === "REPORT_ALREADY_PROCESSED") {
+        return res.status(409).json({ success: false, error: "Este reporte ya fue actualizado por otra revisión" });
+      }
       console.error("Escalate risk report error:", error);
       res.status(500).json({ success: false, error: "Error al escalar el reporte" });
     }
@@ -1202,14 +1909,223 @@ async function startServer() {
     return updated;
   }
 
+  app.post("/api/admin/providers/:providerId/moderation-approvals", authenticate, requireAdminReviewerOrSuperAdmin, async (req, res) => {
+    try {
+      const parsed = moderationApprovalActionSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ success: false, error: "Los datos de aprobación son inválidos", details: parsed.error.issues });
+      }
+
+      await expirePendingModerationApprovals();
+
+      const { userId } = req.user;
+      const provider = await prisma.provider.findUnique({
+        where: { id: req.params.providerId },
+        select: { id: true, status: true },
+      });
+      if (!provider) return res.status(404).json({ success: false, error: "Proveedor no encontrado" });
+
+      const targetStatus: ProviderStatus = parsed.data.action === "BAN" ? "BANNED" : "SUSPENDED";
+      if (!canTransition(provider.status, targetStatus)) {
+        return res.status(409).json({ success: false, error: "No se puede solicitar esta acción desde el estado actual del proveedor" });
+      }
+      if (parsed.data.riskReportId) {
+        const report = await prisma.riskReport.findFirst({
+          where: { id: parsed.data.riskReportId, providerId: provider.id, status: { in: ["OPEN", "UNDER_REVIEW", "ESCALATED"] } },
+          select: { id: true },
+        });
+        if (!report) {
+          return res.status(409).json({ success: false, error: "El reporte de riesgo no está disponible para esta acción" });
+        }
+      }
+
+      const approval = await prisma.$transaction(async (tx) => {
+        const created = await tx.moderationActionApproval.create({
+          data: {
+            action: parsed.data.action,
+            targetType: "PROVIDER",
+            targetId: provider.id,
+            riskReportId: parsed.data.riskReportId,
+            requestedByUserId: userId,
+            reason: parsed.data.reason,
+            suspendedUntil: parsed.data.suspendedUntil ? new Date(parsed.data.suspendedUntil) : null,
+            expiresAt: new Date(Date.now() + 15 * 60 * 1000),
+          },
+        });
+        await tx.moderationAuditLog.create({
+          data: {
+            actorUserId: userId,
+            action: "MODERATION_APPROVAL_REQUESTED",
+            targetType: "PROVIDER",
+            targetId: provider.id,
+            reason: parsed.data.reason,
+            metadata: { approvalId: created.id, action: parsed.data.action },
+          },
+        });
+        return created;
+      });
+
+      return res.status(202).json({
+        success: true,
+        message: "La acción requiere aprobación de un segundo administrador",
+        data: approval,
+      });
+    } catch (error) {
+      console.error("Request moderation approval error:", error);
+      res.status(500).json({ success: false, error: "Error al solicitar aprobación de moderación" });
+    }
+  });
+
+  app.get("/api/admin/moderation-approvals", authenticate, requireAdminReviewerOrSuperAdmin, async (_req, res) => {
+    try {
+      await expirePendingModerationApprovals();
+
+      const approvals = await prisma.moderationActionApproval.findMany({
+        where: { status: "PENDING", expiresAt: { gt: new Date() } },
+        orderBy: { requestedAt: "asc" },
+        include: {
+          requestedBy: { select: { id: true, name: true } },
+        },
+      });
+      res.json({ success: true, data: approvals });
+    } catch (error) {
+      console.error("List moderation approvals error:", error);
+      res.status(500).json({ success: false, error: "Error al obtener aprobaciones pendientes" });
+    }
+  });
+
+  app.post("/api/admin/moderation-approvals/:approvalId/approve", authenticate, requireSuperAdmin, async (req, res) => {
+    try {
+      const parsed = moderationApprovalDecisionSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ success: false, error: "La aprobación no es válida", details: parsed.error.issues });
+
+      await expirePendingModerationApprovals();
+
+      const { userId } = req.user;
+      const approval = await prisma.moderationActionApproval.findUnique({
+        where: { id: req.params.approvalId },
+      });
+      if (!approval) return res.status(404).json({ success: false, error: "Solicitud de aprobación no encontrada" });
+      if (approval.requestedByUserId === userId) {
+        return res.status(403).json({ success: false, error: "La persona que solicita la acción no puede aprobarla" });
+      }
+      if (approval.status === "EXPIRED") {
+        return res.status(409).json({ success: false, error: "La solicitud de aprobación expiró" });
+      }
+      if (approval.status !== "PENDING") {
+        return res.status(409).json({ success: false, error: "Esta solicitud de aprobación ya fue procesada" });
+      }
+      if (approval.expiresAt <= new Date()) {
+        await expirePendingModerationApprovals();
+        return res.status(409).json({ success: false, error: "La solicitud de aprobación expiró" });
+      }
+
+      const targetStatus: ProviderStatus = approval.action === "BAN" ? "BANNED" : "SUSPENDED";
+      const result = await prisma.$transaction(async (tx) => {
+        const claimed = await tx.moderationActionApproval.updateMany({
+          where: {
+            id: approval.id,
+            status: "PENDING",
+            expiresAt: { gt: new Date() },
+            requestedByUserId: { not: userId },
+          },
+          data: { status: "APPROVED", approvedByUserId: userId, approvedAt: new Date() },
+        });
+        if (claimed.count !== 1) throw new Error("APPROVAL_ALREADY_PROCESSED");
+
+        const provider = await tx.provider.findUnique({
+          where: { id: approval.targetId },
+          select: { id: true, status: true },
+        });
+        if (!provider) throw new Error("PROVIDER_NOT_FOUND");
+        if (!canTransition(provider.status, targetStatus)) throw new Error("INVALID_TRANSITION");
+
+        const updated = await tx.provider.update({
+          where: { id: provider.id },
+          data: {
+            status: targetStatus,
+            statusReason: approval.reason,
+            suspendedUntil: targetStatus === "SUSPENDED" ? approval.suspendedUntil : null,
+            statusUpdatedAt: new Date(),
+            statusUpdatedById: userId,
+          },
+        });
+        await tx.moderationAuditLog.create({
+          data: {
+            actorUserId: userId,
+            action: targetStatus === "BANNED" ? "PROVIDER_BANNED_APPROVED" : "PROVIDER_SUSPENDED_APPROVED",
+            targetType: "PROVIDER",
+            targetId: provider.id,
+            reason: approval.reason,
+            metadata: { approvalId: approval.id, requestedByUserId: approval.requestedByUserId },
+          },
+        });
+
+        if (approval.riskReportId) {
+          const report = await tx.riskReport.findFirst({
+            where: {
+              id: approval.riskReportId,
+              providerId: provider.id,
+              status: { in: ["OPEN", "UNDER_REVIEW", "ESCALATED"] },
+            },
+            select: { id: true, penalty: true },
+          });
+          if (!report) throw new Error("REPORT_ALREADY_PROCESSED");
+          const resolved = await tx.riskReport.updateMany({
+            where: { id: report.id, status: { in: ["OPEN", "UNDER_REVIEW", "ESCALATED"] } },
+            data: {
+              status: "ACTION_TAKEN",
+              reviewerNotes: approval.reason,
+              reviewedAt: new Date(),
+              reviewedByUserId: userId,
+              resolvedAt: new Date(),
+              resolvedByUserId: userId,
+            },
+          });
+          if (resolved.count !== 1) throw new Error("REPORT_ALREADY_PROCESSED");
+          if (report.penalty > 0) {
+            await createReputationEvidence(tx, {
+              providerId: provider.id,
+              riskReportId: report.id,
+              evidenceType: "PENALTY_SUSPICIOUS_ACTIVITY",
+              evidenceWeight: report.penalty,
+              algorithmVersion: "trust-v2.0.0",
+              tx,
+            });
+          }
+          await tx.moderationAuditLog.create({
+            data: {
+              actorUserId: userId,
+              action: "REPORT_ACTION_TAKEN",
+              targetType: "RISK_REPORT",
+              targetId: report.id,
+              reason: approval.reason,
+              metadata: { providerId: provider.id, approvalId: approval.id },
+            },
+          });
+        }
+        return updated;
+      });
+
+      await recalculateProviderTrustScore(approval.targetId);
+
+      return res.json({ success: true, data: result });
+    } catch (error) {
+      const message = (error as Error).message;
+      if (message === "APPROVAL_ALREADY_PROCESSED") return res.status(409).json({ success: false, error: "Esta solicitud de aprobación ya fue procesada" });
+      if (message === "PROVIDER_NOT_FOUND") return res.status(404).json({ success: false, error: "Proveedor no encontrado" });
+      if (message === "INVALID_TRANSITION") return res.status(409).json({ success: false, error: "No se puede ejecutar la acción desde el estado actual del proveedor" });
+      if (message === "REPORT_ALREADY_PROCESSED") return res.status(409).json({ success: false, error: "El reporte asociado ya fue resuelto" });
+      console.error("Approve moderation error:", error);
+      res.status(500).json({ success: false, error: "Error al aprobar la acción de moderación" });
+    }
+  });
+
   app.post("/api/admin/providers/:providerId/suspend", authenticate, requireSuperAdmin, async (req, res) => {
     try {
       const parsed = providerSuspendSchema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ success: false, error: "Los datos de suspensión son inválidos", details: parsed.error.issues });
-      const { userId } = req.user;
-      const { reason, suspendedUntil } = parsed.data;
-      const provider = await updateProviderModerationStatus(req.params.providerId, userId, "SUSPENDED", reason, suspendedUntil || null);
-      res.json({ success: true, data: provider });
+      return res.status(409).json({ success: false, error: "La suspensión requiere aprobación de un segundo administrador" });
     } catch (error) {
       const msg = (error as Error).message;
       if (msg === "PROVIDER_NOT_FOUND") return res.status(404).json({ success: false, error: "Proveedor no encontrado" });
@@ -1223,9 +2139,7 @@ async function startServer() {
     try {
       const parsed = providerModerationReasonSchema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ success: false, error: "El baneo requiere una razón", details: parsed.error.issues });
-      const { userId } = req.user;
-      const provider = await updateProviderModerationStatus(req.params.providerId, userId, "BANNED", parsed.data.reason);
-      res.json({ success: true, data: provider });
+      return res.status(409).json({ success: false, error: "El baneo requiere aprobación de un segundo administrador" });
     } catch (error) {
       const msg = (error as Error).message;
       if (msg === "PROVIDER_NOT_FOUND") return res.status(404).json({ success: false, error: "Proveedor no encontrado" });
@@ -1298,6 +2212,49 @@ async function startServer() {
     }
   });
 
+  app.get("/api/admin/threads/:id/events", authenticate, requireAdminReviewerOrSuperAdmin, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const eventType = req.query.eventType as string | undefined;
+
+      const thread = await prisma.quoteThread.findUnique({
+        where: { id },
+        select: { id: true },
+      });
+
+      if (!thread) {
+        return res.status(404).json({ success: false, error: "Thread no encontrado" });
+      }
+
+      const events = await prisma.requestEvent.findMany({
+        where: {
+          requestId: id,
+          ...(eventType ? { eventType: eventType as any } : {}),
+        },
+        include: {
+          actor: {
+            select: { id: true, name: true, email: true },
+          },
+        },
+        orderBy: { occurredAt: "asc" },
+      });
+
+      res.json({ success: true, data: events });
+    } catch (error) {
+      console.error("Admin thread events error:", error);
+      res.status(500).json({ success: false, error: "Error al obtener eventos del thread" });
+    }
+  });
+
+  app.post("/api/admin/resolve-expired-quotes", authenticate, requireSuperAdmin, async (req, res) => {
+    try {
+      const result = await resolveExpiredQuotes();
+      res.json({ success: true, ...result });
+    } catch (error: any) {
+      res.status(500).json({ success: false, error: error.message });
+    }
+  });
+
   // POST Generate AI Enhanced Bio
   app.post("/api/providers/enhance-bio", async (req, res) => {
     try {
@@ -1323,6 +2280,17 @@ async function startServer() {
       const input = parsed.data;
       const { displayName, category, aboutDescription } = input;
 
+      const bannedProvider = await prisma.provider.findFirst({
+        where: { userId, status: "BANNED" },
+        select: { id: true },
+      });
+      if (bannedProvider) {
+        return res.status(403).json({
+          success: false,
+          error: "Tu cuenta tiene un perfil baneado y no puede crear otro perfil de proveedor",
+        });
+      }
+
       const baseSlug = slugifyProviderName(displayName);
       let slug = baseSlug;
       let suffix = 2;
@@ -1337,42 +2305,77 @@ async function startServer() {
       const primaryCategory = await ensureCategoryReference(mainCategory, rootCategory.id);
       const responseTimeHrs = input.responseTimeHrs || 1;
 
-      const provider = await prisma.provider.create({
-        data: {
-          userId,
-          displayName,
-          slug,
-          shortDescription: input.shortDescription || null,
-          aboutDescription,
-          logoUrl: input.logoUrl || null,
-          coverImageUrl: input.coverImageUrl || null,
-          city: legacyCity,
-          cityId: cityRef.id,
-          department: cityRef.departmentId ? cityMetadata[legacyCity].department : null,
-          serviceRadius: input.serviceRadius || null,
-          category,
-          mainCategory,
-          categoryLinks: {
-            create: [
-              { categoryId: rootCategory.id, isPrimary: false },
-              ...(primaryCategory.id !== rootCategory.id ? [{ categoryId: primaryCategory.id, isPrimary: true }] : []),
-            ],
-          },
-          priceRange: input.priceRange || null,
-          availability: normalizeAvailability(input.availability),
-          formalizationStatus: normalizeFormalizationStatus(input.formalizationStatus),
-          status: "DRAFT",
-          responseTimeHrs,
-          metrics: {
-            create: {
-              profileCompleteness: 55,
-              responseTimeHrs,
-              completedRequests: 0,
-              requestsResponded: 0,
-              trustScore: 30,
+      const provider = await prisma.$transaction(async (tx) => {
+        // Serialize concurrent profile creation for the same account. PostgreSQL
+        // row locking ensures the second request sees the lineage created by
+        // the first request before choosing its root.
+        const lockedUsers = await tx.$queryRaw<{ id: string }[]>`
+          SELECT "id" FROM "User" WHERE "id" = ${userId} FOR UPDATE
+        `;
+        if (lockedUsers.length !== 1) throw new Error("USER_NOT_FOUND");
+
+        // Multiple business profiles can belong to the same authenticated user.
+        // They share a lineage so a later confirmed ban is visible to risk review
+        // without requiring a test-only or manual database update.
+        const lineageMember = await tx.provider.findFirst({
+          where: { userId },
+          orderBy: { createdAt: "asc" },
+          select: { id: true, riskLineageRootId: true },
+        });
+        const lineageRootId = lineageMember?.riskLineageRootId ?? lineageMember?.id;
+
+        if (lineageMember && !lineageMember.riskLineageRootId) {
+          await tx.provider.update({
+            where: { id: lineageMember.id },
+            data: { riskLineageRootId: lineageMember.id },
+          });
+        }
+
+        const created = await tx.provider.create({
+          data: {
+            userId,
+            displayName,
+            slug,
+            shortDescription: input.shortDescription || null,
+            aboutDescription,
+            logoUrl: input.logoUrl || null,
+            coverImageUrl: input.coverImageUrl || null,
+            city: legacyCity,
+            cityId: cityRef.id,
+            department: cityRef.departmentId ? cityMetadata[legacyCity].department : null,
+            serviceRadius: input.serviceRadius || null,
+            category,
+            mainCategory,
+            categoryLinks: {
+              create: [
+                { categoryId: rootCategory.id, isPrimary: false },
+                ...(primaryCategory.id !== rootCategory.id ? [{ categoryId: primaryCategory.id, isPrimary: true }] : []),
+              ],
+            },
+            priceRange: input.priceRange || null,
+            availability: normalizeAvailability(input.availability),
+            formalizationStatus: normalizeFormalizationStatus(input.formalizationStatus),
+            status: "DRAFT",
+            responseTimeHrs,
+            riskLineageRootId: lineageRootId ?? undefined,
+            metrics: {
+              create: {
+                profileCompleteness: 55,
+                responseTimeHrs,
+                completedRequests: 0,
+                requestsResponded: 0,
+                trustScore: 30,
+              },
             },
           },
-        },
+        });
+
+        return lineageRootId
+          ? created
+          : tx.provider.update({
+              where: { id: created.id },
+              data: { riskLineageRootId: created.id },
+            });
       });
 
       await prisma.user.update({
@@ -1423,7 +2426,14 @@ async function startServer() {
 
       const updated = await prisma.provider.update({
         where: { id: providerId },
-        data: { status: "ACTIVE", statusReason: null, suspendedUntil: null, statusUpdatedAt: new Date(), statusUpdatedById: userId },
+        data: {
+          status: "ACTIVE",
+          activatedAt: new Date(),
+          statusReason: null,
+          suspendedUntil: null,
+          statusUpdatedAt: new Date(),
+          statusUpdatedById: userId,
+        },
       });
 
       await createModerationAuditLog({
@@ -1702,75 +2712,24 @@ async function startServer() {
     }
   });
 
-  // GET Formalization Checklist
+  // GET Formalization Checklist [DEPRECATED - D-17]
   app.get("/api/providers/:id/formalization", async (req, res) => {
-    try {
-      const checklist = await prisma.formalizationChecklist.findUnique({
-        where: { providerId: req.params.id },
-      });
-      res.json({ success: true, data: { steps: checklist?.steps || [] } });
-    } catch (error) {
-      console.error("Get formalization error:", error);
-      res.status(500).json({ success: false, error: "Error al obtener checklist" });
-    }
+    res.status(501).json({
+      success: false,
+      error: "FEATURE_NOT_IN_MVP",
+      message: "Formalización legal no forma parte del MVP activo (Decisión D-17). Ver /formalization para roadmap futuro.",
+      roadmap: "/formalization"
+    });
   });
 
-  // PUT Formalization Checklist
+  // PUT Formalization Checklist [DEPRECATED - D-17]
   app.put("/api/providers/:id/formalization", authenticate, async (req, res) => {
-    try {
-      const parsed = formalizationUpdateSchema.safeParse(req.body);
-      if (!parsed.success) {
-        return res.status(400).json({ success: false, error: "Datos inválidos", details: parsed.error.issues });
-      }
-
-      const { stepId, status } = parsed.data;
-      const providerId = req.params.id;
-
-      // Get existing checklist
-      let checklist = await prisma.formalizationChecklist.findUnique({
-        where: { providerId },
-      });
-
-      if (!checklist) {
-        return res.status(404).json({ success: false, error: "Checklist no encontrado" });
-      }
-
-      // Update the step in the JSON array
-      const steps = checklist.steps as Array<{ id: string; title: string; description: string; status: string }>;
-      let stepFound = false;
-      let nextCurrentIndex = -1;
-
-      for (let i = 0; i < steps.length; i++) {
-        if (steps[i].id === stepId) {
-          steps[i].status = status;
-          stepFound = true;
-          if (status === "completed") {
-            nextCurrentIndex = i + 1;
-          }
-        }
-      }
-
-      if (!stepFound) {
-        return res.status(404).json({ success: false, error: "Step no encontrado" });
-      }
-
-      // Auto-advance next pending step to current
-      if (nextCurrentIndex !== -1 && nextCurrentIndex < steps.length) {
-        if (steps[nextCurrentIndex].status === "pending") {
-          steps[nextCurrentIndex].status = "current";
-        }
-      }
-
-      const updated = await prisma.formalizationChecklist.update({
-        where: { providerId },
-        data: { steps },
-      });
-
-      res.json({ success: true, message: "Estado de formalización actualizado", data: { steps: updated.steps } });
-    } catch (error) {
-      console.error("Update formalization error:", error);
-      res.status(500).json({ success: false, error: "Error al actualizar formalización" });
-    }
+    res.status(501).json({
+      success: false,
+      error: "FEATURE_NOT_IN_MVP",
+      message: "Formalización legal no forma parte del MVP activo (Decisión D-17). Ver /formalization para roadmap futuro.",
+      roadmap: "/formalization"
+    });
   });
 
   // GET Reviews by Provider
@@ -1788,8 +2747,92 @@ async function startServer() {
     }
   });
 
+  app.get("/api/quotes/:id/review-eligibility", authenticate, async (req, res) => {
+    try {
+      const eligibility = await checkReviewEligibility(req.params.id, req.user.userId);
+      return res.json({ success: true, data: eligibility });
+    } catch (error) {
+      console.error("Get review eligibility error:", error);
+      return res.status(500).json({ success: false, error: "No se pudo verificar si la solicitud permite reseña" });
+    }
+  });
+
+  app.post("/api/quotes/:id/private-feedback", authenticate, async (req, res) => {
+    try {
+      const parsed = privateFeedbackSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ success: false, error: parsed.error.issues[0]?.message || "El feedback es inválido" });
+      const { thread, role } = await getThreadParticipantRole(req.params.id, req.user.userId);
+      if (!thread) return res.status(404).json({ success: false, error: "Solicitud no encontrada" });
+      if (role !== "provider") return res.status(403).json({ success: false, error: "Solo el proveedor puede enviar feedback privado" });
+      if (thread.workflow_phase !== "CLOSED") return res.status(409).json({ success: false, error: "El feedback se habilita cuando la solicitud está cerrada" });
+
+      const feedback = await prisma.$transaction(async (tx) => {
+        const current = await tx.providerPrivateFeedback.findUnique({ where: { requestId: thread.id } });
+        if (!current) {
+          return tx.providerPrivateFeedback.create({
+            data: { requestId: thread.id, providerId: thread.providerId, authorId: req.user.userId, note: parsed.data.note },
+            select: { id: true, requestId: true, createdAt: true, updatedAt: true },
+          });
+        }
+        await tx.providerPrivateFeedbackHistory.create({
+          data: { feedbackId: current.id, authorId: current.authorId, note: current.note },
+        });
+        return tx.providerPrivateFeedback.update({
+          where: { id: current.id },
+          data: { note: parsed.data.note, authorId: req.user.userId },
+          select: { id: true, requestId: true, createdAt: true, updatedAt: true },
+        });
+      });
+      return res.status(201).json({ success: true, data: feedback });
+    } catch (error) {
+      console.error("Create private feedback error:", error);
+      return res.status(500).json({ success: false, error: "No se pudo guardar el feedback privado" });
+    }
+  });
+
+  app.get("/api/quotes/:id/private-feedback", authenticate, async (req, res) => {
+    try {
+      const thread = await prisma.quoteThread.findUnique({ where: { id: req.params.id }, include: { provider: { select: { userId: true } } } });
+      if (!thread) return res.status(404).json({ success: false, error: "Solicitud no encontrada" });
+      const roles = await getUserSystemRoles(req.user.userId);
+      const isAdmin = roles.has("ADMIN_REVIEWER") || roles.has("SUPER_ADMIN");
+      if (thread.provider.userId !== req.user.userId && !isAdmin) {
+        return res.status(403).json({ success: false, error: "Este feedback es privado para el proveedor y el equipo de moderación" });
+      }
+      const feedback = await prisma.providerPrivateFeedback.findUnique({
+        where: { requestId: thread.id },
+        select: { id: true, requestId: true, note: true, createdAt: true, updatedAt: true },
+      });
+      return res.json({ success: true, data: feedback });
+    } catch (error) {
+      console.error("Get private feedback error:", error);
+      return res.status(500).json({ success: false, error: "No se pudo obtener el feedback privado" });
+    }
+  });
+
+  app.post("/api/admin/threads/:id/commercial-interaction", authenticate, requireAdminReviewerOrSuperAdmin, async (req, res) => {
+    try {
+      const parsed = commercialInteractionSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ success: false, error: parsed.error.issues[0]?.message || "La nota es inválida" });
+      const thread = await prisma.quoteThread.findUnique({ where: { id: req.params.id }, select: { id: true } });
+      if (!thread) return res.status(404).json({ success: false, error: "Solicitud no encontrada" });
+      const audit = await createModerationAuditLog({
+        actorUserId: req.user.userId,
+        action: "COMMERCIAL_INTERACTION_CONFIRMED",
+        targetType: "QUOTE_THREAD",
+        targetId: thread.id,
+        reason: parsed.data.note,
+        metadata: { source: "sprint-7-review-eligibility" },
+      });
+      return res.status(201).json({ success: true, data: { id: audit.id, threadId: thread.id, confirmedAt: audit.createdAt } });
+    } catch (error) {
+      console.error("Confirm commercial interaction error:", error);
+      return res.status(500).json({ success: false, error: "No se pudo registrar la interacción comercial" });
+    }
+  });
+
   // POST Create Review
-  app.post("/api/reviews", authenticate, async (req, res) => {
+  app.post("/api/reviews", authenticate, idempotencyMiddleware, async (req, res) => {
     try {
       const parsed = reviewCreateSchema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ success: false, error: "Los datos de la reseña son inválidos", details: parsed.error.issues });
@@ -1805,43 +2848,62 @@ async function startServer() {
         return res.status(404).json({ success: false, error: "Solicitud no encontrada para este proveedor" });
       }
 
-      if (request.status !== "COMPLETED" || !request.completedAt) {
-        return res.status(409).json({ success: false, error: "La reseña se habilita cuando la solicitud está completada por ambas partes" });
+      const eligibility = await checkReviewEligibility(requestId, userId);
+      if (!eligibility.eligible) {
+        const errorMessages: Record<string, string> = {
+          THREAD_NOT_FOUND: "Solicitud no encontrada",
+          ONLY_REQUESTER_CAN_REVIEW: "Solo el cliente puede reseñar",
+          SELF_REVIEW_NOT_ALLOWED: "No podés reseñar tu propio perfil",
+          THREAD_NOT_CLOSED: "La solicitud debe estar cerrada para reseñar",
+          ALREADY_REVIEWED: "Ya reseñaste esta solicitud",
+          OUTCOME_NOT_REVIEWABLE: "Este tipo de cierre no permite reseña",
+          NO_ENGAGEMENT_BEFORE_CANCELLATION: "No hubo suficiente interacción para reseñar",
+          CLOSURE_TIME_NOT_RECORDED: "No se pudo verificar el momento del cierre",
+        };
+        const reason = (eligibility as { reason: string }).reason;
+        return res.status(409).json({
+          success: false,
+          error: errorMessages[reason] || "No podés reseñar esta solicitud",
+        });
       }
-
-      if (request.senderId !== userId) {
-        return res.status(403).json({ success: false, error: "Solo el solicitante puede reseñar esta solicitud" });
-      }
-
-      if (request.provider.userId === userId) {
-        return res.status(403).json({ success: false, error: "No podés reseñar tu propio perfil" });
-      }
+      const reviewWeight = eligibility.weight;
 
       const generalScore = (qualityScore + (responseTimeScore ?? qualityScore) + (fulfillmentScore ?? qualityScore) + (communicationScore ?? qualityScore) + (valueScore ?? qualityScore)) / 5;
 
-      const review = await prisma.review.create({
-        data: {
-          providerId,
-          reviewerId: userId,
-          requestId,
-          qualityScore,
-          responseTimeScore: responseTimeScore ?? qualityScore,
-          fulfillmentScore: fulfillmentScore ?? qualityScore,
-          communicationScore: communicationScore ?? qualityScore,
-          valueScore: valueScore ?? qualityScore,
-          generalScore,
-          comment,
-          analysis: {
-            create: {
-              sentimentScore: null,
-              qualitySignals: { verifiedRequest: true, bilateralCompletion: true },
-              moderationFlags: { suspicious: false },
-              generalScore,
-              algorithmVersion: "v1-route-basic",
+      const evidenceType = eligibility.route === "BILATERAL" ? 'BILATERAL_COMPLETION' : 'UNILATERAL_REVIEW_QUALIFIED';
+      const review = await prisma.$transaction(async (tx) => {
+        const created = await tx.review.create({
+          data: {
+            providerId,
+            reviewerId: userId,
+            requestId,
+            qualityScore,
+            responseTimeScore: responseTimeScore ?? qualityScore,
+            fulfillmentScore: fulfillmentScore ?? qualityScore,
+            communicationScore: communicationScore ?? qualityScore,
+            valueScore: valueScore ?? qualityScore,
+            generalScore,
+            weight: reviewWeight,
+            comment,
+            analysis: {
+              create: {
+                sentimentScore: null,
+                qualitySignals: { verifiedRequest: true, bilateralCompletion: eligibility.route === "BILATERAL" },
+                moderationFlags: { suspicious: false },
+                generalScore,
+                algorithmVersion: "v1-route-basic",
+              },
             },
           },
-        },
-        include: { reviewer: { select: { id: true, name: true, image: true } }, analysis: true },
+          include: { reviewer: { select: { id: true, name: true, image: true } }, analysis: true },
+        });
+        await createReputationEvidence(tx, {
+          providerId,
+          requestId,
+          evidenceType,
+          evidenceWeight: reviewWeight,
+        });
+        return created;
       });
 
       const reviewStats = await prisma.review.aggregate({
@@ -1863,10 +2925,101 @@ async function startServer() {
         },
       });
 
-      res.status(201).json({ success: true, data: review });
+      await recalculateProviderTrustScore(providerId);
+
+      res.status(201).json({
+        success: true,
+        data: review,
+        editableUntil: new Date(review.createdAt.getTime() + 7 * 24 * 60 * 60 * 1000),
+      });
     } catch (error) {
       console.error("Create review error:", error);
       res.status(500).json({ success: false, error: "Error al crear reseña" });
+    }
+  });
+
+  app.patch("/api/reviews/:id", authenticate, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { userId } = req.user;
+      const parsed = reviewUpdateSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ success: false, error: "Los datos de la reseña son inválidos", details: parsed.error.issues });
+
+      const review = await prisma.review.findUnique({ where: { id } });
+      if (!review) return res.status(404).json({ success: false, error: "Reseña no encontrada" });
+
+      if (review.reviewerId !== userId) {
+        return res.status(403).json({ success: false, error: "Solo el autor puede editar esta reseña" });
+      }
+
+      if (!isReviewEditable(review.createdAt)) {
+        return res.status(400).json({ success: false, error: "La reseña solo puede editarse durante los primeros 7 días" });
+      }
+
+      const merged = {
+        qualityScore: parsed.data.qualityScore ?? review.qualityScore,
+        responseTimeScore: parsed.data.responseTimeScore ?? review.responseTimeScore,
+        fulfillmentScore: parsed.data.fulfillmentScore ?? review.fulfillmentScore,
+        communicationScore: parsed.data.communicationScore ?? review.communicationScore,
+        valueScore: parsed.data.valueScore ?? review.valueScore,
+        comment: parsed.data.comment ?? review.comment,
+      };
+      const generalScore = (merged.qualityScore + merged.responseTimeScore + merged.fulfillmentScore + merged.communicationScore + merged.valueScore) / 5;
+
+      const evidenceType = review.weight === 1 ? 'BILATERAL_COMPLETION' : 'UNILATERAL_REVIEW_QUALIFIED';
+      const updated = await prisma.$transaction(async (tx) => {
+        await tx.reviewHistory.create({
+          data: {
+            reviewId: review.id,
+            qualityScore: review.qualityScore,
+            responseTimeScore: review.responseTimeScore,
+            fulfillmentScore: review.fulfillmentScore,
+            communicationScore: review.communicationScore,
+            valueScore: review.valueScore,
+            generalScore: review.generalScore,
+            comment: review.comment,
+            editedByUserId: userId,
+            editedAt: new Date(),
+          },
+        });
+
+        const updatedReview = await tx.review.update({
+          where: { id: review.id },
+          data: { ...merged, generalScore, editedAt: new Date() },
+          include: { reviewer: { select: { id: true, name: true, image: true } }, analysis: true },
+        });
+
+        const evidence = await tx.reputationEvent.findUnique({
+          where: { requestId_evidenceType: { requestId: review.requestId, evidenceType } },
+        });
+        if (!evidence) {
+          await createReputationEvidence(tx, {
+            providerId: review.providerId,
+            requestId: review.requestId,
+            evidenceType,
+            evidenceWeight: review.weight,
+            tx,
+          });
+        } else {
+          await tx.reputationEvent.update({
+            where: { id: evidence.id },
+            data: { evidenceWeight: review.weight },
+          });
+        }
+
+        return updatedReview;
+      });
+
+      await recalculateProviderTrustScore(review.providerId);
+
+      res.json({
+        success: true,
+        data: updated,
+        editableUntil: new Date(review.createdAt.getTime() + 7 * 24 * 60 * 60 * 1000),
+      });
+    } catch (error) {
+      console.error("Update review error:", error);
+      res.status(500).json({ success: false, error: "Error al editar reseña" });
     }
   });
 
@@ -1920,8 +3073,16 @@ async function startServer() {
 
   // Start the actual express server on host 0.0.0.0
   app.listen(PORT, "0.0.0.0", () => {
-    console.log(`\n🚀 Conecta Emprende AI Server running on http://0.0.0.0:${PORT}`);
+    console.log(`\n🚀 TradeArc Server running on http://0.0.0.0:${PORT}`);
   });
+
+  if (process.env.NODE_ENV !== "test") {
+    cron.schedule("*/10 * * * *", async () => {
+      try { await resolveExpiredQuotes(); }
+      catch (error) { console.error("[Cron] Error resolving expired quotes:", error); }
+    });
+    console.log("✓ Cron job: resolve expired quotes every 10 minutes");
+  }
 }
 
 startServer();

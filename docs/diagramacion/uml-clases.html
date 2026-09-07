@@ -1,0 +1,741 @@
+﻿<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>TradeArc Â· UML de clases</title>
+<style>
+  :root{--bg:#0f1115;--panel:#171a21;--line:#262b36;--txt:#e7eaf0;--muted:#9aa3b2;--accent:#2f9e73}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--txt);font:15px/1.55 "Segoe UI",system-ui,-apple-system,sans-serif}
+  header{padding:22px 28px 16px;border-bottom:1px solid var(--line)}
+  h1{margin:0 0 4px;font-size:21px;font-weight:650}
+  .sub{color:var(--muted);font-size:13.5px}
+  .sub code{background:#1d2129;padding:1px 6px;border-radius:4px;font-size:12.5px}
+  .back{color:#6cf;text-decoration:none;font-size:13px}
+  nav{display:flex;flex-wrap:wrap;gap:8px;padding:16px 28px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--bg);z-index:10}
+  button{font:inherit;font-size:13.5px;cursor:pointer;border-radius:7px;border:1px solid var(--line);background:var(--panel);color:var(--txt);padding:7px 13px}
+  button:hover{border-color:#3a4150}
+  button.tab.active{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+  .tools{margin-left:auto;display:flex;gap:8px;align-items:center}
+  .zoom{display:inline-flex;align-items:center;gap:6px;color:var(--muted);font-size:13px}
+  main{padding:20px 28px 60px}
+  .meta{color:var(--muted);font-size:13px;margin:0 0 14px;max-width:120ch}
+  .meta b{color:var(--txt);font-weight:600}
+  #stage{background:#fbfcfd;border:1px solid var(--line);border-radius:10px;padding:18px;overflow:auto;min-height:60vh}
+  #stage svg{max-width:none;height:auto}
+  .legend{display:flex;flex-wrap:wrap;gap:18px;margin:16px 0 0;padding:14px 16px;background:var(--panel);border:1px solid var(--line);border-radius:10px;font-size:13px;color:var(--muted)}
+  .legend code{color:var(--txt);background:#1d2129;padding:1px 6px;border-radius:4px}
+  .err{background:#2a1618;border:1px solid #5b2a2f;color:#ffb4b4;padding:14px;border-radius:8px;white-space:pre-wrap;font-family:Consolas,monospace;font-size:13px}
+</style>
+</head>
+<body>
+<header>
+  <h1>TradeArc Â· Diagrama UML de clases</h1>
+  <div class="sub">
+    Modelo de dominio, enumeraciones y capa de servicios derivados de <code>server.ts</code>, <code>src/lib</code> y <code>src/domain</code> Â·
+    <a class="back" href="./">volver al portal</a>
+  </div>
+</header>
+
+<nav>
+  <button class="tab active" data-d="identidad">Dominio Â· Identidad y proveedor</button>
+  <button class="tab" data-d="solicitudes">Dominio Â· Solicitudes y reputaciÃ³n</button>
+  <button class="tab" data-d="enums">Enumeraciones</button>
+  <button class="tab" data-d="servicios">Capa de servicios</button>
+  <button class="tab" data-d="capas">Arquitectura en capas</button>
+  <div class="tools">
+    <span class="zoom"><button id="out">&minus;</button><span id="lvl">100%</span><button id="in">+</button></span>
+    <button id="svg">SVG</button>
+    <button id="png">PNG</button>
+  </div>
+</nav>
+
+<main>
+  <p class="meta" id="meta"></p>
+  <div id="stage">Renderizandoâ€¦</div>
+  <div class="legend">
+    <div><code>+</code> pÃºblico</div>
+    <div><code>-</code> privado</div>
+    <div><code>*--</code> composiciÃ³n, el hijo no vive sin el padre</div>
+    <div><code>o--</code> agregaciÃ³n</div>
+    <div><code>--&gt;</code> asociaciÃ³n</div>
+    <div><code>..&gt;</code> dependencia</div>
+    <div><code>&lt;&lt;service&gt;&gt;</code> servicio sin estado</div>
+  </div>
+</main>
+
+<script type="text/plain" id="src-identidad">
+classDiagram
+    direction LR
+
+    class User {
+        +String id
+        +String email
+        +String name
+        +Role role
+        -String password
+        +DateTime emailVerified
+        +Boolean isSynthetic
+        +Boolean collusionConfirmed
+        +DateTime createdAt
+        +estaVerificado() Boolean
+        +esElegibleComoEvidencia(cierre) Boolean
+        +rolesEfectivos() SetOfString
+    }
+
+    class RoleAssignment {
+        +String id
+        +String userId
+        +String role
+        +DateTime createdAt
+    }
+
+    class Session {
+        +String id
+        +String sessionToken
+        +DateTime expires
+        +haExpirado() Boolean
+    }
+
+    class RefreshToken {
+        +String id
+        +String token
+        +DateTime expiresAt
+        +rotar() RefreshToken
+    }
+
+    class Account {
+        +String id
+        +String provider
+        +String providerAccountId
+        -String access_token
+        -String refresh_token
+    }
+
+    class Provider {
+        +String id
+        +String userId
+        +String displayName
+        +String slug
+        +String shortDescription
+        +String aboutDescription
+        +ProviderStatus status
+        +Availability availability
+        +FormalizationStatus formalizationStatus
+        +Boolean verified
+        +Float lat
+        +Float lng
+        +DateTime activatedAt
+        +publicar() Provider
+        +puedeRecibirSolicitudes() Boolean
+        +esVisiblePublicamente() Boolean
+        +puedeTransicionarA(destino) Boolean
+        +cumpleRequisitosDePublicacion() Boolean
+    }
+
+    class ProviderMetrics {
+        +String id
+        +Float avgRating
+        +Int totalVerifiedReviews
+        +Float profileCompleteness
+        +Int completedRequests
+        +Int bilateralCompletions
+        +Int uniqueRequesters
+        +Float suspiciousActivityPenalty
+        -Float trustScore
+        +Float publicTrustScore
+        +String evidenceLevel
+        +Boolean publicScoreFrozen
+        +Boolean growthHold
+        +String algorithmVersion
+        +exponerScorePublico() Float
+        +tieneEvidenciaSuficiente() Boolean
+    }
+
+    class CatalogItem {
+        +String id
+        +String title
+        +String itemType
+        +String description
+        +Int priceMin
+        +Int priceMax
+        +String currency
+        +Availability availabilityStatus
+        +Boolean deliveryAvailable
+        +Boolean pickupAvailable
+        +estaDisponible() Boolean
+    }
+
+    class EquipmentDetail {
+        +String id
+        +String modality
+        +String brand
+        +String model
+        +String condition
+        +Boolean requiresTraining
+        +Boolean includesInstallation
+    }
+
+    class Department {
+        +String id
+        +String name
+        +String slug
+    }
+
+    class City {
+        +String id
+        +String name
+        +String slug
+        +LegacyCity legacyCode
+    }
+
+    class Category {
+        +String id
+        +String name
+        +String slug
+        +String parentCategoryId
+        +esRaiz() Boolean
+    }
+
+    class ProviderCategory {
+        +String providerId
+        +String categoryId
+        +Boolean isPrimary
+    }
+
+    User "1" *-- "0..*" RoleAssignment : acumula
+    User "1" *-- "0..*" Session : abre
+    User "1" *-- "0..*" RefreshToken : rota
+    User "1" *-- "0..*" Account : vincula
+    User "1" o-- "0..*" Provider : posee
+    Provider "1" *-- "0..1" ProviderMetrics : materializa
+    Provider "1" *-- "0..*" CatalogItem : publica
+    CatalogItem "1" *-- "0..1" EquipmentDetail : especializa
+    Department "1" o-- "0..*" City : agrupa
+    City "0..1" o-- "0..*" Provider : ubica
+    City "0..1" o-- "0..*" CatalogItem : ubica
+    Category "0..1" o-- "0..*" Category : jerarquiza
+    Provider "1" *-- "0..*" ProviderCategory : clasifica
+    Category "1" o-- "0..*" ProviderCategory : etiqueta
+</script>
+
+<script type="text/plain" id="src-solicitudes">
+classDiagram
+    direction TB
+
+    class QuoteThread {
+        +String id
+        +String senderId
+        +String providerId
+        +String subject
+        +WorkflowPhase workflow_phase
+        +ClosureOutcome closure_outcome
+        +ModerationState moderation_state
+        +DateTime completionDeadline
+        +DateTime confirmedByRequesterAt
+        +DateTime confirmedByProviderAt
+        +DateTime completedAt
+        +Int version
+        +Int cycleNo
+        +String completionInitiatorUserId
+        +DateTime completionRejectedAt
+        +DateTime lastNonSystemicMessageAt
+        +estaCerrado() Boolean
+        +haVencidoLaVentana() Boolean
+        +ambasPartesConfirmaron() Boolean
+        +permiteMensajes() Boolean
+        +huboInteraccionComercial() Boolean
+        +estadoLegacyDerivado() String
+    }
+
+    class QuoteMessage {
+        +String id
+        +String authorId
+        +String authorRole
+        +String body
+        +Boolean aiDrafted
+        +Boolean approvedByUser
+        +DateTime createdAt
+        +esSistemico() Boolean
+    }
+
+    class QuoteOffer {
+        +String id
+        +Int amount
+        +String currency
+        +String priceLabel
+        +String deliveryTimeLabel
+        +String status
+    }
+
+    class RequestEvent {
+        +String id
+        +String requestId
+        +RequestEventType eventType
+        +String actorUserId
+        +Int completionCycleNo
+        +String idempotencyKey
+        +Json metadataJson
+        +DateTime occurredAt
+        +calcularClaveIdempotencia() String
+    }
+
+    class ReputationEvent {
+        +String id
+        +String providerId
+        +String requestId
+        +EvidenceType evidenceType
+        +Float evidenceWeight
+        +String sourceEventId
+        +String algorithmVersion
+        +DateTime invalidatedAt
+        +String invalidationReason
+        +estaVigente() Boolean
+    }
+
+    class Review {
+        +String id
+        +String providerId
+        +String reviewerId
+        +String requestId
+        +Int qualityScore
+        +Int responseTimeScore
+        +Int fulfillmentScore
+        +Int communicationScore
+        +Int valueScore
+        +Float generalScore
+        +String comment
+        +Float weight
+        +DateTime editedAt
+        +DateTime createdAt
+        +calcularPuntajeGeneral() Float
+        +esEditable() Boolean
+    }
+
+    class ReviewHistory {
+        +String id
+        +Float generalScore
+        +String comment
+        +DateTime editedAt
+        +String editedByUserId
+    }
+
+    class ReviewAnalysis {
+        +String id
+        +Float sentimentScore
+        +Json qualitySignals
+        +Json moderationFlags
+        +String algorithmVersion
+    }
+
+    class ProviderPrivateFeedback {
+        +String id
+        +String requestId
+        +String providerId
+        +String authorId
+        +String note
+        +DateTime updatedAt
+    }
+
+    class ProviderPrivateFeedbackHistory {
+        +String id
+        +String note
+        +DateTime recordedAt
+    }
+
+    class TrustScoreSnapshot {
+        +String id
+        +Float finalScore
+        +Float publicScore
+        +String evidenceLevel
+        +Json breakdown
+        +Json caps
+        +String algorithmVersion
+        +DateTime calculatedAt
+    }
+
+    class RiskReport {
+        +String id
+        +Float riskScore
+        +Int suspiciousCyclesCount
+        +Float newAccountsPercentage
+        +Float ratingConcentrationScore
+        +String status
+        +String recommendedAction
+        +DateTime generatedAt
+        +requiereFrenoDeCrecimiento() Boolean
+    }
+
+    class ModerationAuditLog {
+        +String id
+        +String actorUserId
+        +String action
+        +String targetType
+        +String targetId
+        +String reason
+        +Json metadata
+    }
+
+    QuoteThread "1" *-- "1..*" QuoteMessage : contiene
+    QuoteThread "1" *-- "0..*" QuoteOffer : negocia
+    QuoteThread "1" *-- "0..*" RequestEvent : registra
+    QuoteThread "1" o-- "0..*" ReputationEvent : origina
+    QuoteThread "1" o-- "0..*" Review : habilita
+    QuoteThread "1" *-- "0..1" ProviderPrivateFeedback : cierra con
+    ProviderPrivateFeedback "1" *-- "0..*" ProviderPrivateFeedbackHistory : versiona
+    Review "1" *-- "0..1" ReviewAnalysis : analiza
+    Review "1" *-- "0..*" ReviewHistory : versiona
+    RequestEvent "0..1" o-- "0..*" ReputationEvent : fundamenta
+    ReputationEvent "0..*" ..> TrustScoreSnapshot : alimenta
+    RiskReport "0..*" ..> TrustScoreSnapshot : limita
+    ModerationAuditLog "0..*" ..> RiskReport : documenta
+</script>
+
+<script type="text/plain" id="src-enums">
+classDiagram
+    direction LR
+
+    class Role {
+        <<enumeration>>
+        USER
+        PROVIDER
+        ADMIN
+        ADMIN_REVIEWER
+        SUPER_ADMIN
+    }
+
+    class ProviderStatus {
+        <<enumeration>>
+        DRAFT
+        ACTIVE
+        INACTIVE
+        TEMPORARILY_RESTRICTED
+        SUSPENDED
+        BANNED
+    }
+
+    class Availability {
+        <<enumeration>>
+        DISPONIBLE
+        OCUPADO
+        BAJO_PEDIDO
+        NO_DISPONIBLE_TEMPORALMENTE
+    }
+
+    class FormalizationStatus {
+        <<enumeration>>
+        INFORMAL
+        EN_PROCESO
+        MIPYME_FORMAL
+        DOCUMENTOS_PENDIENTES
+    }
+
+    class WorkflowPhase {
+        <<enumeration>>
+        OPEN
+        COMPLETION_PENDING
+        CLOSED
+    }
+
+    class ClosureOutcome {
+        <<enumeration>>
+        BILATERAL
+        REQUESTER_CONFIRMED_PROVIDER_NO_RESPONSE
+        PROVIDER_CLAIMED_REQUESTER_NO_RESPONSE
+        CANCELLED_BY_REQUESTER
+        CANCELLED_BY_PROVIDER
+        CANCELLED_BY_PROVIDER_AFTER_ENGAGEMENT
+        DECLINED_BY_PROVIDER
+        MODERATION_CLOSURE
+        EXPIRED_NO_PROVIDER_RESPONSE
+        ACCOUNT_DEACTIVATED
+        CLOSED_BY_ADMIN
+    }
+
+    class ModerationState {
+        <<enumeration>>
+        CLEAN
+        FLAGGED
+        RESTRICTED
+    }
+
+    class EvidenceType {
+        <<enumeration>>
+        BILATERAL_COMPLETION
+        UNILATERAL_REVIEW_QUALIFIED
+        UNILATERAL_REVIEW_UNQUALIFIED
+        CONTACT_CONFIRMATION
+        PENALTY_SUSPICIOUS_ACTIVITY
+        PENALTY_POLICY_VIOLATION
+    }
+
+    class RequestEventType {
+        <<enumeration>>
+        REQUEST_CREATED
+        PROVIDER_RESPONDED
+        QUOTE_ACCEPTED
+        COMPLETION_REQUESTED
+        COMPLETION_CONFIRMED
+        COMPLETION_TIMEOUT
+        COMPLETION_NOT_ACCEPTED
+        COMPLETION_REQUEST_WITHDRAWN
+        REQUEST_DECLINED
+        REQUEST_EXPIRED
+        CANCELLED_BY_REQUESTER
+        CANCELLED_BY_PROVIDER
+        MODERATION_FLAG
+        MODERATION_CLOSURE
+        REOPENED
+        MESSAGE_SENT
+        DEADLINE_EXTENDED
+        ADMIN_OVERRIDE
+    }
+
+    class LegacyCity {
+        <<enumeration>>
+        MANAGUA
+        LEON
+        GRANADA
+        MASAYA
+        ESTELI
+        MATAGALPA
+        BLUEFIELDS
+        JUIGALPA
+        NAGAROTE
+        SAN_JUAN_DE_ORIENTE
+    }
+</script>
+
+<script type="text/plain" id="src-servicios">
+classDiagram
+    direction LR
+
+    class QuotesService {
+        <<service>>
+        +createThread(input) QuoteThread
+        +addMessage(threadId, autor, cuerpo) QuoteMessage
+        +updateThread(threadId, cambios) QuoteThread
+        +rejectCompletion(threadId, actor, nota) QuoteThread
+        +withdrawCompletion(threadId, actor) QuoteThread
+        +validateNotExpired(threadId) void
+        +resolveTimeoutInline(threadId) QuoteThread
+        +updateThreadWithLocking(id, datos, version) QuoteThread
+        +getLegacyDisplayStatus(fase, desenlace) String
+        +getThreadsForParticipant(userId) ListOfQuoteThread
+    }
+
+    class RequestEventsService {
+        <<service>>
+        +emitRequestEvent(cliente, entrada) RequestEvent
+        +replayRequestEvents(requestId) EstadoReconstruido
+        -buildIdempotencyKey(entrada) String
+    }
+
+    class ReputationEventsService {
+        <<service>>
+        +createReputationEvidence(entrada) ReputationEvent
+        +rebuildTrustScoreFromEvents(providerId) Desglose
+        +invalidateEvidence(id, adminId, motivo) ReputationEvent
+    }
+
+    class TrustScoreService {
+        <<service>>
+        +recalculateProviderTrustScore(providerId) ProviderMetrics
+        -filtrarRequestersElegibles(completados) ListOfUser
+        -aplicarTopesDeModeracion(score, penalizacion) Float
+        -aplicarFrenoDeCrecimiento(providerId) Boolean
+    }
+
+    class ReviewRules {
+        <<domain>>
+        +checkReviewEligibility(threadId, userId) Elegibilidad
+        +isReviewEditable(review) Boolean
+        -resolverRutaYPeso(desenlace) PesoEvidencia
+        -verificarInteraccionComercial(thread) Boolean
+    }
+
+    class ProvidersService {
+        <<service>>
+        +searchProviders(filtros) ListOfProvider
+        +updateProviderService(id, datos) Provider
+        +canTransition(origen, destino) Boolean
+        +isPubliclyVisible(status) Boolean
+        +canReceiveQuotes(status) Boolean
+    }
+
+    class RiskTelemetryService {
+        <<service>>
+        +analyzeProviderRisk(providerId) RiskReport
+        -detectarCiclosSospechosos(providerId) Int
+        -medirConcentracionDeRating(providerId) Float
+    }
+
+    class AiSearchService {
+        <<adapter>>
+        +extractIntent(texto) Intencion
+        +rankProviders(intencion, candidatos) ListOfProvider
+        +generateEnhancedBio(borrador) String
+        +generateQuoteDraft(idea, proveedor) String
+        -classifyGeminiError(error) ErrorUsuario
+    }
+
+    class ResolveExpiredQuotesJob {
+        <<job>>
+        +resolveExpiredQuotes() Resumen
+        -determinarDesenlace(thread) ClosureOutcome
+    }
+
+    class AuthMiddleware {
+        <<middleware>>
+        +authenticate(req, res, next) void
+        +getUserSystemRoles(userId) SetOfString
+        +requireAdminReviewerOrSuperAdmin(req, res, next) void
+        +requireSuperAdmin(req, res, next) void
+        +getThreadParticipantRole(threadId, userId) String
+        +getProviderOwnedByUser(providerId, userId) Provider
+    }
+
+    class IdempotencyMiddleware {
+        <<middleware>>
+        +idempotencyMiddleware(req, res, next) void
+        +cleanupExpiredIdempotencyKeys() void
+    }
+
+    class PrismaClient {
+        <<repository>>
+        +transaction(operaciones) Resultado
+        +queryRaw(sql) Resultado
+    }
+
+    QuotesService ..> RequestEventsService : emite eventos
+    QuotesService ..> ReputationEventsService : crea evidencia
+    QuotesService ..> PrismaClient : persiste
+    ResolveExpiredQuotesJob ..> QuotesService : reutiliza reglas
+    ResolveExpiredQuotesJob ..> RequestEventsService : emite timeout
+    ResolveExpiredQuotesJob ..> TrustScoreService : recalcula
+    ResolveExpiredQuotesJob ..> RiskTelemetryService : analiza
+    ReviewRules ..> PrismaClient : consulta evidencia
+    TrustScoreService ..> ReputationEventsService : reconstruye
+    TrustScoreService ..> RiskTelemetryService : consulta riesgo
+    ReputationEventsService ..> PrismaClient : persiste
+    RequestEventsService ..> PrismaClient : persiste
+    ProvidersService ..> PrismaClient : consulta
+    RiskTelemetryService ..> PrismaClient : consulta
+    AuthMiddleware ..> PrismaClient : resuelve roles
+</script>
+
+<script type="text/plain" id="src-capas">
+classDiagram
+    direction TB
+
+    class ExpressApp {
+        <<entrypoint>>
+        +startServer() void
+        +registrarRutas() void
+        +programarCron() void
+    }
+
+    class RutasPublicas {
+        <<route>>
+        +GET_providers_search() Respuesta
+        +POST_providers_ai_search() Respuesta
+        +GET_providers_id() Respuesta
+        +GET_providers_trust_score() Respuesta
+    }
+
+    class RutasAutenticadas {
+        <<route>>
+        +POST_quotes() Respuesta
+        +PATCH_quotes_complete() Respuesta
+        +POST_reviews() Respuesta
+        +POST_providers_publish() Respuesta
+    }
+
+    class RutasAdmin {
+        <<route>>
+        +GET_admin_risk_reports() Respuesta
+        +POST_admin_providers_suspend() Respuesta
+        +GET_admin_audit_log() Respuesta
+        +GET_admin_threads_events() Respuesta
+    }
+
+    class ValidacionZod {
+        <<validator>>
+        +parse(payload) DatosValidados
+        +formatearErrorUsuario(error) MensajeEsNi
+    }
+
+    class CapaServicios {
+        <<service>>
+        +orquestarCasoDeUso() Resultado
+    }
+
+    class CapaDominio {
+        <<domain>>
+        +aplicarReglasDeNegocio() Decision
+    }
+
+    class PrismaORM {
+        <<repository>>
+        +modelosTipados() Entidad
+    }
+
+    class PostgreSQL {
+        <<database>>
+        +restriccionesUnicas() void
+        +accionesReferenciales() void
+    }
+
+    class GeminiAPI {
+        <<external>>
+        +generarContenido(prompt) Texto
+    }
+
+    ExpressApp --> RutasPublicas : monta
+    ExpressApp --> RutasAutenticadas : monta
+    ExpressApp --> RutasAdmin : monta
+    RutasPublicas ..> ValidacionZod : valida entrada
+    RutasAutenticadas ..> ValidacionZod : valida entrada
+    RutasAdmin ..> ValidacionZod : valida entrada
+    RutasPublicas ..> CapaServicios : delega
+    RutasAutenticadas ..> CapaServicios : delega
+    RutasAdmin ..> CapaServicios : delega
+    CapaServicios ..> CapaDominio : consulta reglas
+    CapaServicios ..> PrismaORM : persiste
+    CapaDominio ..> PrismaORM : lee evidencia
+    PrismaORM --> PostgreSQL : ejecuta SQL
+    CapaServicios ..> GeminiAPI : busqueda y redaccion
+</script>
+
+<script type="module">
+import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+mermaid.initialize({startOnLoad:false,theme:'base',themeVariables:{primaryColor:'#eef4ff',primaryBorderColor:'#3b6ea8',primaryTextColor:'#12263f',lineColor:'#5b6b80',fontSize:'13px',fontFamily:'Segoe UI, system-ui, sans-serif'},class:{useMaxWidth:false}});
+
+const META = {
+  identidad: 'Modelo de dominio de identidad y oferta. La composicion <b>User a Provider</b> es de uno a muchos porque una persona puede tener varios negocios, y eso obliga a que el control de acceso sea por pertenencia y no por rol. <b>ProviderMetrics</b> separa el score interno del publicable: <code>trustScore</code> es privado y <code>publicTrustScore</code> es el unico que sale por la API.',
+  solicitudes: 'Nucleo transaccional. <b>QuoteThread</b> concentra los tres ejes de estado y los campos de control de concurrencia. <b>RequestEvent</b> es el ledger inmutable con clave de idempotencia, y <b>ReputationEvent</b> es la evidencia que alimenta la confianza. La cadena completa es auditable: evento de solicitud, evidencia, snapshot de confianza.',
+  enums: 'Las 10 enumeraciones del esquema. <b>ClosureOutcome</b> es la pieza que permite distinguir no solo si una solicitud termino, sino como termino, que es lo que habilita o bloquea dejar una resena y con que peso.',
+  servicios: 'Capa de servicios real del backend. Los estereotipos distinguen servicio, dominio puro, adaptador externo, job programado y middleware. <b>ReviewRules</b> es dominio puro sin efectos secundarios, y <b>ResolveExpiredQuotesJob</b> reutiliza las mismas reglas que las rutas HTTP para que el cierre por vencimiento y el manual no divergan.',
+  capas: 'Arquitectura en capas. Toda entrada pasa por validacion Zod antes de llegar a los servicios; los servicios orquestan y consultan al dominio; Prisma es el unico camino a PostgreSQL. Las restricciones criticas viven en la base de datos, no solo en el codigo.'
+};
+
+const stage=document.getElementById('stage'),meta=document.getElementById('meta'),lvl=document.getElementById('lvl');
+let current='identidad',zoom=1;
+function applyZoom(){const s=stage.querySelector('svg');if(!s)return;s.style.transformOrigin='0 0';s.style.transform=`scale(${zoom})`;lvl.textContent=Math.round(zoom*100)+'%';}
+async function draw(k){current=k;meta.innerHTML=META[k]||'';const code=document.getElementById('src-'+k).textContent.trim();stage.textContent='Renderizandoâ€¦';
+ try{const{svg}=await mermaid.render('g-'+k+'-'+Date.now(),code);stage.innerHTML=svg;zoom=1;applyZoom();}
+ catch(e){stage.innerHTML='<div class="err">No se pudo renderizar.\n\n'+String(e&&e.message?e.message:e).replace(/[<>&]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]))+'\n\nMermaid se carga desde CDN, revisa la conexion.</div>';}}
+document.querySelectorAll('.tab').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));b.classList.add('active');draw(b.dataset.d);}));
+document.getElementById('in').onclick=()=>{zoom=Math.min(zoom+0.15,3);applyZoom();};
+document.getElementById('out').onclick=()=>{zoom=Math.max(zoom-0.15,0.3);applyZoom();};
+function svgStr(){const s=stage.querySelector('svg');if(!s)return null;const c=s.cloneNode(true);c.style.transform='';c.setAttribute('xmlns','http://www.w3.org/2000/svg');return new XMLSerializer().serializeToString(c);}
+document.getElementById('svg').onclick=()=>{const s=svgStr();if(!s)return;const u=URL.createObjectURL(new Blob([s],{type:'image/svg+xml'}));const a=document.createElement('a');a.href=u;a.download='tradearc-clases-'+current+'.svg';a.click();URL.revokeObjectURL(u);};
+document.getElementById('png').onclick=()=>{const el=stage.querySelector('svg'),s=svgStr();if(!s||!el)return;const b=el.getBoundingClientRect(),k=2;
+ const w=Math.ceil((el.viewBox.baseVal.width||b.width/zoom)*k),h=Math.ceil((el.viewBox.baseVal.height||b.height/zoom)*k);
+ const img=document.createElement("img");img.onload=()=>{const c=document.createElement('canvas');c.width=w;c.height=h;const x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,w,h);x.drawImage(img,0,0,w,h);const a=document.createElement('a');a.href=c.toDataURL('image/png');a.download='tradearc-clases-'+current+'.png';a.click();};
+ img.src='data:image/svg+xml;base64,'+btoa(unescape(encodeURIComponent(s)));};
+draw('identidad');
+</script>
+</body>
+</html>

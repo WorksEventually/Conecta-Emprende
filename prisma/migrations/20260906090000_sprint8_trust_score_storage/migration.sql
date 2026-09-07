@@ -1,0 +1,21 @@
+ALTER TABLE "ProviderMetrics"
+  ADD COLUMN IF NOT EXISTS "publicTrustScore" DOUBLE PRECISION,
+  ADD COLUMN IF NOT EXISTS "evidenceLevel" TEXT NOT NULL DEFAULT 'INSUFFICIENT_EVIDENCE',
+  ADD COLUMN IF NOT EXISTS "algorithmVersion" TEXT NOT NULL DEFAULT 'trust-v2.0.0';
+
+ALTER TABLE "TrustScoreSnapshot"
+  ADD COLUMN IF NOT EXISTS "publicScore" DOUBLE PRECISION,
+  ADD COLUMN IF NOT EXISTS "evidenceLevel" TEXT NOT NULL DEFAULT 'INSUFFICIENT_EVIDENCE',
+  ADD COLUMN IF NOT EXISTS "breakdown" JSONB,
+  ADD COLUMN IF NOT EXISTS "caps" JSONB;
+
+UPDATE "ProviderMetrics"
+SET "publicTrustScore" = CASE
+  WHEN "bilateralCompletions" >= 3 THEN "trustScore"
+  ELSE NULL
+END,
+"evidenceLevel" = CASE
+  WHEN "bilateralCompletions" >= 3 THEN 'OK'
+  ELSE 'INSUFFICIENT_EVIDENCE'
+END
+WHERE "publicTrustScore" IS NULL;

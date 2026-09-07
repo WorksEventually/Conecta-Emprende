@@ -28,23 +28,23 @@ type CategoryMeta = {
 };
 
 const CATEGORY_META: Record<string, CategoryMeta> = {
-  "Diseño Gráfico":   { icon: Palette,           color: "#004080", colorDark: "#001F3F", bg: "#F5F5F5" },
-  "Plomería":         { icon: Wrench,            color: "#004080", colorDark: "#001F3F", bg: "#F5F5F5" },
-  "Carpintería":      { icon: Hammer,            color: "#004080", colorDark: "#001F3F", bg: "#F5F5F5" },
-  "Desarrollo Web":   { icon: Code2,             color: "#004080", colorDark: "#001F3F", bg: "#F5F5F5" },
-  "Marketing":        { icon: Megaphone,         color: "#004080", colorDark: "#001F3F", bg: "#F5F5F5" },
-  "Electricidad":     { icon: Zap,               color: "#004080", colorDark: "#001F3F", bg: "#F5F5F5" },
-  "Limpieza":         { icon: Sparkles,          color: "#004080", colorDark: "#001F3F", bg: "#F5F5F5" },
-  "Contabilidad":     { icon: Calculator,        color: "#004080", colorDark: "#001F3F", bg: "#F5F5F5" },
-  "Abogado":          { icon: Scale,             color: "#5f6f7f", colorDark: "#001F3F", bg: "#C0C0C0" },
-  "Fotografía":       { icon: Camera,            color: "#004080", colorDark: "#001F3F", bg: "#F5F5F5" },
-  "Catering":         { icon: UtensilsCrossed,   color: "#004080", colorDark: "#001F3F", bg: "#F5F5F5" },
-  "Jardinería":       { icon: Leaf,              color: "#004080", colorDark: "#001F3F", bg: "#F5F5F5" },
-  "Mecánica":         { icon: Car,               color: "#004080", colorDark: "#001F3F", bg: "#F5F5F5" },
+  "Diseño Gráfico":   { icon: Palette,           color: "#1A3C6E", colorDark: "#1A3C6E", bg: "#F8F9FA" },
+  "Plomería":         { icon: Wrench,            color: "#1A3C6E", colorDark: "#1A3C6E", bg: "#F8F9FA" },
+  "Carpintería":      { icon: Hammer,            color: "#1A3C6E", colorDark: "#1A3C6E", bg: "#F8F9FA" },
+  "Desarrollo Web":   { icon: Code2,             color: "#1A3C6E", colorDark: "#1A3C6E", bg: "#F8F9FA" },
+  "Marketing":        { icon: Megaphone,         color: "#1A3C6E", colorDark: "#1A3C6E", bg: "#F8F9FA" },
+  "Electricidad":     { icon: Zap,               color: "#1A3C6E", colorDark: "#1A3C6E", bg: "#F8F9FA" },
+  "Limpieza":         { icon: Sparkles,          color: "#1A3C6E", colorDark: "#1A3C6E", bg: "#F8F9FA" },
+  "Contabilidad":     { icon: Calculator,        color: "#1A3C6E", colorDark: "#1A3C6E", bg: "#F8F9FA" },
+  "Abogado":          { icon: Scale,             color: "#333333", colorDark: "#1A3C6E", bg: "#F8F9FA" },
+  "Fotografía":       { icon: Camera,            color: "#1A3C6E", colorDark: "#1A3C6E", bg: "#F8F9FA" },
+  "Catering":         { icon: UtensilsCrossed,   color: "#1A3C6E", colorDark: "#1A3C6E", bg: "#F8F9FA" },
+  "Jardinería":       { icon: Leaf,              color: "#1A3C6E", colorDark: "#1A3C6E", bg: "#F8F9FA" },
+  "Mecánica":         { icon: Car,               color: "#1A3C6E", colorDark: "#1A3C6E", bg: "#F8F9FA" },
 };
 
 const DEFAULT_CATEGORY_META: CategoryMeta = {
-  icon: Sparkles, color: "#004080", colorDark: "#001F3F", bg: "#F5F5F5",
+  icon: Sparkles, color: "#1A3C6E", colorDark: "#1A3C6E", bg: "#F8F9FA",
 };
 
 function getCategoryMeta(category: string): CategoryMeta {
@@ -187,9 +187,9 @@ function RichPopup({ provider }: { provider: MapProvider }) {
             <>
               <span style={{ opacity: 0.4 }}>·</span>
               <div className="popup-rating">
-                <Star style={{ fill: "#004080", stroke: "#004080" }} />
-                <span style={{ color: "#001F3F" }}>{avgRating.toFixed(1)}</span>
-                <span style={{ color: "#C0C0C0", fontWeight: 600 }}>({reviews.length})</span>
+                <Star style={{ fill: "#1A3C6E", stroke: "#1A3C6E" }} />
+                <span style={{ color: "#1A3C6E" }}>{avgRating.toFixed(1)}</span>
+                <span style={{ color: "rgba(51, 51, 51, 0.72)", fontWeight: 600 }}>({reviews.length})</span>
               </div>
             </>
           )}
@@ -535,7 +535,7 @@ export default function ProviderMap({
   return (
     <div
       ref={containerRef}
-      className={`provider-map-container w-full h-full relative z-0 bg-slate-100 ${isFullscreen ? "fullscreen" : ""}`}
+      className={`provider-map-container w-full h-full relative z-0 bg-[#F8F9FA] ${isFullscreen ? "fullscreen" : ""}`}
     >
       {/* Loading skeleton */}
       <div className={`map-loading-skeleton ${mapReady ? "hidden" : ""}`}>
@@ -576,10 +576,10 @@ export default function ProviderMap({
             center={[userLocation.lat, userLocation.lng]}
             radius={2000}
             pathOptions={{
-              color: "#004080",
+              color: "#1A3C6E",
               weight: 2,
               opacity: 0.5,
-              fillColor: "#004080",
+              fillColor: "#1A3C6E",
               fillOpacity: 0.08,
               dashArray: "6, 6",
             }}
