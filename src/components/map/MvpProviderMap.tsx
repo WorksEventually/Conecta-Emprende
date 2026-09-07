@@ -21,7 +21,7 @@ export interface SearchMapProvider {
   city: string;
   lat: number;
   lng: number;
-  trustScore: number;
+  trustScore: number | null;
   availabilityLabel: string;
   status?: string;
   statusReason?: string | null;
@@ -179,7 +179,7 @@ function ProviderMarkers({
         const hovered = provider.id === hoveredId;
         const icon = L.divIcon({
           className: `provider-map-touchpoint ${selected ? "selected" : hovered ? "hovered" : ""}`,
-          html: `<div><span class="provider-map-dot"></span><strong>${provider.trustScore}</strong></div>`,
+          html: `<div><span class="provider-map-dot"></span><strong>${provider.trustScore ?? "Evidencia insuficiente"}</strong></div>`,
           iconSize: [48, 34],
           iconAnchor: [24, 17],
         });
@@ -200,7 +200,7 @@ function ProviderMarkers({
             <Tooltip direction="top" offset={[0, -12]} opacity={0.95}>
               <strong>{provider.publicName}</strong>
               <br />
-              {provider.category} · {provider.trustScore} confianza
+              {provider.category} · {provider.trustScore ?? "Evidencia insuficiente"}{provider.trustScore !== null && " confianza"}
             </Tooltip>
           </Marker>
         );
@@ -305,7 +305,7 @@ export default function MvpProviderMap({
             <div className="map-preview-signals">
               <span>
                 <ShieldCheck />
-                {selectedProvider.trustScore} confianza
+                {selectedProvider.trustScore ?? "Evidencia insuficiente"}{selectedProvider.trustScore !== null && " confianza"}
               </span>
               <span>
                 <BadgeCheck />

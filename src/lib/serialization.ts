@@ -11,7 +11,6 @@ export interface SerializedMarketplaceData {
   requests:QuoteRequest[];
   reviews:Review[];
   reports:Report[];
-  formalizationSteps:Record<string,boolean[]>;
   savedProviderIds:string[];
 }
 
@@ -26,7 +25,6 @@ export function createMarketplaceSnapshot():SerializedMarketplaceData {
     requests:state.requests,
     reviews:state.reviews,
     reports:state.reports,
-    formalizationSteps:state.formalizationSteps,
     savedProviderIds:state.savedProviderIds,
   };
 }

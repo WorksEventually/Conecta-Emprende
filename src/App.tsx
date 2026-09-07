@@ -9,6 +9,7 @@ import { NewRequestPage, RequestDetailPage, RequestsPage } from "./pages/Request
 import { SecurityPage, TrustPage } from "./pages/AccountPages";
 import EditPublicProfilePage from "./pages/EditPublicProfilePage";
 import AdminReportsPage from "./pages/AdminReportsPage";
+import AdminThreadEventsPage from "./pages/AdminThreadEventsPage";
 import UnavailablePage from "./pages/UnavailablePage";
 import ChatPage from "./pages/ChatPage";
 import MyProfileDashboardPage from "./pages/MyProfileDashboardPage";
@@ -187,6 +188,14 @@ export default function App() {
             element={
               <ProtectedRoute allowedRoles={["ADMIN", "ADMIN_REVIEWER", "SUPER_ADMIN"]}>
                 <AdminReportsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/threads/:id/events"
+            element={
+              <ProtectedRoute allowedRoles={["ADMIN", "ADMIN_REVIEWER", "SUPER_ADMIN"]}>
+                <AdminThreadEventsPage />
               </ProtectedRoute>
             }
           />

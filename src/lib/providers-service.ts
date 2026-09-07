@@ -85,7 +85,9 @@ export interface ProviderSearchResult {
   verified: boolean;
   verificationLevel: string | null;
   formalizationStatus: string;
-  trustScore: number;
+  trustScore: number | null;
+  bilateralCompletions: number;
+  evidenceLevel: string;
   responseTimeHrs: number | null;
   completedRequests: number;
   photos: string[];
@@ -159,7 +161,9 @@ export async function searchProviders(params: {
       },
       metrics: {
         select: {
-          trustScore: true,
+          publicTrustScore: true,
+          evidenceLevel: true,
+          bilateralCompletions: true,
           responseTimeHrs: true,
           completedRequests: true,
         },
@@ -194,7 +198,9 @@ export async function searchProviders(params: {
     verified: p.verified,
     verificationLevel: p.verificationLevel,
     formalizationStatus: p.formalizationStatus,
-    trustScore: p.metrics?.trustScore ?? p.trustScore?.finalScore ?? 0,
+    trustScore: p.metrics?.publicTrustScore ?? null,
+    bilateralCompletions: p.metrics?.bilateralCompletions ?? 0,
+    evidenceLevel: p.metrics?.evidenceLevel ?? "INSUFFICIENT_EVIDENCE",
     responseTimeHrs: p.metrics?.responseTimeHrs ?? p.responseTimeHrs,
     completedRequests: p.metrics?.completedRequests ?? p.completedRequests,
     photos: p.photos.map((ph) => ph.imageUrl),
@@ -301,7 +307,25 @@ export async function getFullProviderByIdOrSlug(idOrSlug: string): Promise<FullP
       category: firstSecondaryCategoryFromLinks(provider.categoryLinks) ?? provider.category,
       mainCategory: primaryCategoryFromLinks(provider.categoryLinks) ?? provider.mainCategory,
       subcategories: categoryNamesFromLinks(provider.categoryLinks),
-      trustScore: provider.metrics ? { finalScore: provider.metrics.trustScore } : provider.trustScore,
+       trustScore: provider.metrics
+         ? {
+             finalScore: provider.metrics.publicTrustScore,
+             publicScore: provider.metrics.publicTrustScore,
+             internalScore: provider.metrics.trustScore,
+             evidenceLevel: provider.metrics.evidenceLevel,
+             algorithmVersion: provider.metrics.algorithmVersion,
+             publicScoreFrozen: provider.metrics.publicScoreFrozen,
+             growthHold: provider.metrics.growthHold,
+           }
+         : {
+             finalScore: null,
+             publicScore: null,
+             internalScore: null,
+             evidenceLevel: "INSUFFICIENT_EVIDENCE",
+             algorithmVersion: "trust-v2.0.0",
+             publicScoreFrozen: false,
+             growthHold: false,
+           },
       responseTimeHrs: provider.metrics?.responseTimeHrs ?? provider.responseTimeHrs,
       completedRequests: provider.metrics?.completedRequests ?? provider.completedRequests,
       profileCompleteness: provider.metrics?.profileCompleteness ?? provider.profileCompleteness,
@@ -353,7 +377,7 @@ export async function updateProvider(
   });
 }
 
-export async function getProviderMapData(city?: string): Promise<Array<{ id: string; displayName: string; lat: number; lng: number; category: string; availability: string; status: ProviderStatus; verified: boolean; trustScore: number; shortDescription: string | null }>> {
+export async function getProviderMapData(city?: string): Promise<Array<{ id: string; displayName: string; lat: number; lng: number; category: string; availability: string; status: ProviderStatus; verified: boolean; trustScore: number | null; shortDescription: string | null }>> {
   let where: any = {};
   where.status = { in: PUBLICLY_VISIBLE_STATUSES };
   if (city) {
@@ -373,8 +397,7 @@ export async function getProviderMapData(city?: string): Promise<Array<{ id: str
       status: true,
       verified: true,
       shortDescription: true,
-      trustScore: { select: { finalScore: true } },
-      metrics: { select: { trustScore: true } },
+       metrics: { select: { publicTrustScore: true } },
     },
   });
 
@@ -389,7 +412,7 @@ export async function getProviderMapData(city?: string): Promise<Array<{ id: str
       availability: p.availability,
       status: p.status,
       verified: p.verified,
-      trustScore: p.metrics?.trustScore ?? p.trustScore?.finalScore ?? 0,
+       trustScore: p.metrics?.publicTrustScore ?? null,
       shortDescription: p.shortDescription,
     }));
 }

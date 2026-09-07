@@ -3,8 +3,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 // ──────────────────────────────────────────────────────────
@@ -69,6 +70,8 @@ model User {
   role          Role      @default(USER)
   password      String?
   emailVerified DateTime?
+  isSynthetic Boolean @default(false)
+  collusionConfirmed Boolean @default(false)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
@@ -85,9 +88,15 @@ model User {
   providers             Provider[]
   roleAssignments       RoleAssignment[]
   moderationAuditLogs   ModerationAuditLog[] @relation("ModerationAuditActor")
+  requestedModerationActions ModerationActionApproval[] @relation("ModerationApprovalRequester")
+  approvedModerationActions ModerationActionApproval[] @relation("ModerationApprovalApprover")
   providerStatusUpdates Provider[]           @relation("ProviderStatusUpdatedBy")
   escalatedRiskReports  RiskReport[]         @relation("RiskReportEscalatedBy")
   resolvedRiskReports   RiskReport[]         @relation("RiskReportResolvedBy")
+  requestEventActions   RequestEvent[]       @relation("RequestEventActions")
+  invalidatedReputationEvents ReputationEvent[] @relation("ReputationEventInvalidator")
+  privateFeedbackAuthored   ProviderPrivateFeedback[] @relation("PrivateFeedbackAuthor")
+  privateFeedbackHistoryAuthored ProviderPrivateFeedbackHistory[] @relation("PrivateFeedbackHistoryAuthor")
 }
 
 model RoleAssignment {
@@ -219,6 +228,9 @@ model Provider {
   id     String @id @default(cuid())
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  riskLineageRootId String?
+  riskLineageRoot   Provider?  @relation("ProviderRiskLineage", fields: [riskLineageRootId], references: [id], onDelete: SetNull)
+  riskLineageMembers Provider[] @relation("ProviderRiskLineage")
 
   displayName   String
   slug          String  @unique
@@ -266,6 +278,7 @@ model Provider {
   aboutDescription String? @db.Text
 
   createdAt DateTime @default(now())
+  activatedAt DateTime?
   updatedAt DateTime @updatedAt
 
   trustScore          TrustScore?
@@ -282,6 +295,9 @@ model Provider {
   categoryLinks       ProviderCategory[]
   trustScoreSnapshots TrustScoreSnapshot[]
   riskReports         RiskReport[]
+  riskSignalEvidence  RiskSignalEvidence[]
+  reputationEvents    ReputationEvent[]
+  privateFeedback     ProviderPrivateFeedback[]
 
   @@index([city])
   @@index([cityId])
@@ -291,6 +307,7 @@ model Provider {
   @@index([status])
   @@index([statusUpdatedById])
   @@index([userId])
+  @@index([riskLineageRootId])
   @@index([slug])
 }
 
@@ -396,6 +413,11 @@ model ProviderMetrics {
   requestsResponded         Int      @default(0)
   suspiciousActivityPenalty Float    @default(0)
   trustScore                Float    @default(0)
+  publicTrustScore          Float?
+  evidenceLevel             String   @default("INSUFFICIENT_EVIDENCE")
+  publicScoreFrozen         Boolean  @default(false)
+  growthHold                Boolean  @default(false)
+  algorithmVersion          String   @default("trust-v2.0.0")
   bilateralCompletions      Int      @default(0)
   uniqueRequesters          Int      @default(0)
   lastRecalculatedAt        DateTime?
@@ -412,8 +434,8 @@ model Review {
   provider   Provider     @relation("Reviewee", fields: [providerId], references: [id])
   reviewerId String
   reviewer   User         @relation("Reviewer", fields: [reviewerId], references: [id])
-  requestId  String?
-  request    QuoteThread? @relation("RequestReviews", fields: [requestId], references: [id], onDelete: SetNull)
+  requestId  String
+  request    QuoteThread @relation("RequestReviews", fields: [requestId], references: [id], onDelete: Cascade)
 
   qualityScore       Int
   responseTimeScore  Int
@@ -480,6 +502,10 @@ model TrustScoreSnapshot {
   accountAgeFactor          Float
   suspiciousActivityPenalty Float
   finalScore                Float
+  publicScore               Float?
+  evidenceLevel             String   @default("INSUFFICIENT_EVIDENCE")
+  breakdown                 Json?
+  caps                      Json?
   algorithmVersion          String   @default("v1-rule-based")
   calculatedAt              DateTime @default(now())
 
@@ -493,6 +519,9 @@ model RiskReport {
   providerId                    String
   provider                      Provider  @relation(fields: [providerId], references: [id], onDelete: Cascade)
   riskScore                     Float
+  riskLevel                     String    @default("normal")
+  penalty                       Int       @default(0)
+  algorithmVersion              String    @default("risk-v1.0.0")
   suspiciousCyclesCount         Int       @default(0)
   avgSearchTimeSeconds          Float?
   avgRequestToCompletionMinutes Float?
@@ -512,18 +541,45 @@ model RiskReport {
   resolvedAt                    DateTime?
   resolvedByUserId              String?
   resolvedBy                    User?     @relation("RiskReportResolvedBy", fields: [resolvedByUserId], references: [id], onDelete: SetNull)
+  signalEvidence                RiskSignalEvidence[]
+  reputationEvents              ReputationEvent[]
+  moderationApprovals           ModerationActionApproval[]
 
   @@index([providerId])
   @@index([status])
   @@index([reviewedByUserId])
   @@index([escalatedByUserId])
   @@index([resolvedByUserId])
+  @@index([providerId, status, generatedAt])
+}
+
+model RiskSignalEvidence {
+  id              String      @id @default(cuid())
+  providerId      String
+  provider        Provider    @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  riskReportId    String?
+  riskReport      RiskReport? @relation(fields: [riskReportId], references: [id], onDelete: SetNull)
+  signalKey       String
+  observedValue   Float?
+  threshold       Float?
+  contribution    Float
+  windowStart     DateTime
+  windowEnd       DateTime
+  sourceEventIds  Json?
+  sourceRecordIds Json?
+  algorithmVersion String
+  createdAt       DateTime    @default(now())
+
+  @@index([providerId, createdAt])
+  @@index([providerId, signalKey, createdAt])
+  @@index([riskReportId])
+  @@index([algorithmVersion])
 }
 
 model ModerationAuditLog {
   id          String   @id @default(cuid())
-  actorUserId String
-  actor       User     @relation("ModerationAuditActor", fields: [actorUserId], references: [id], onDelete: Cascade)
+  actorUserId String?
+  actor       User?    @relation("ModerationAuditActor", fields: [actorUserId], references: [id], onDelete: SetNull)
   action      String
   targetType  String
   targetId    String
@@ -535,6 +591,31 @@ model ModerationAuditLog {
   @@index([action])
   @@index([targetType, targetId])
   @@index([createdAt])
+}
+
+model ModerationActionApproval {
+  id                String   @id @default(cuid())
+  action            String
+  targetType        String
+  targetId          String
+  riskReportId      String?
+  riskReport        RiskReport? @relation(fields: [riskReportId], references: [id], onDelete: SetNull)
+  requestedByUserId String
+  requestedBy       User     @relation("ModerationApprovalRequester", fields: [requestedByUserId], references: [id], onDelete: Cascade)
+  approvedByUserId  String?
+  approvedBy        User?    @relation("ModerationApprovalApprover", fields: [approvedByUserId], references: [id], onDelete: SetNull)
+  status            String   @default("PENDING")
+  reason            String   @db.Text
+  suspendedUntil    DateTime?
+  requestedAt       DateTime @default(now())
+  approvedAt        DateTime?
+  expiresAt         DateTime
+
+  @@index([targetType, targetId, status])
+  @@index([riskReportId])
+  @@index([requestedByUserId, status])
+  @@index([approvedByUserId])
+  @@index([expiresAt])
 }
 
 // ──────────────────────────────────────────────────────────
@@ -676,16 +757,58 @@ model QuoteThread {
   confirmedByProviderAt  DateTime?
   completedAt            DateTime?
 
-  messages    QuoteMessage[]
-  quoteOffers QuoteOffer[]
-  reviews     Review[]       @relation("RequestReviews")
-  createdAt   DateTime       @default(now())
+  version Int @default(1)
+  cycleNo Int @default(0)
+
+  // Sprint 6: Campos para rechazo/withdrawal del cierre (P2 §4.3, §4.4)
+  completionInitiatorUserId   String?   @map("completion_initiator_user_id")
+  completionRejectedAt        DateTime? @map("completion_rejected_at")
+  completionRejectedByUserId  String?   @map("completion_rejected_by_user_id")
+  lastNonSystemicMessageAt    DateTime? @map("last_nonsystemic_message_at")
+
+  messages         QuoteMessage[]
+  quoteOffers      QuoteOffer[]
+  reviews          Review[]            @relation("RequestReviews")
+  requestEvents    RequestEvent[]
+  reputationEvents ReputationEvent[]   @relation("RequestReputationEvents")
+  privateFeedback  ProviderPrivateFeedback?
+  createdAt        DateTime            @default(now())
 
   @@index([senderId])
   @@index([providerId])
   @@index([status])
   @@index([workflow_phase])
   @@index([completionDeadline])
+}
+
+model ProviderPrivateFeedback {
+  id          String      @id @default(cuid())
+  requestId   String      @unique
+  request     QuoteThread @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  providerId  String
+  provider    Provider    @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  authorId    String
+  author      User        @relation("PrivateFeedbackAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  history     ProviderPrivateFeedbackHistory[]
+  note        String      @db.Text
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  @@index([providerId])
+  @@index([authorId])
+}
+
+model ProviderPrivateFeedbackHistory {
+  id         String      @id @default(cuid())
+  feedbackId String
+  feedback   ProviderPrivateFeedback @relation(fields: [feedbackId], references: [id], onDelete: Cascade)
+  authorId   String
+  author     User        @relation("PrivateFeedbackHistoryAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  note       String      @db.Text
+  recordedAt DateTime    @default(now())
+
+  @@index([feedbackId, recordedAt])
+  @@index([authorId])
 }
 
 model QuoteOffer {
@@ -719,6 +842,63 @@ model QuoteMessage {
   createdAt      DateTime    @default(now())
 
   @@index([threadId])
+}
+
+model RequestEvent {
+  id                 String           @id @default(cuid())
+  requestId          String
+  request            QuoteThread      @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  eventType          RequestEventType
+  actorUserId        String?
+  actor              User?            @relation("RequestEventActions", fields: [actorUserId], references: [id], onDelete: SetNull)
+  completionCycleNo  Int              @default(0)
+  idempotencyKey     String           @unique
+  metadataJson       Json?
+  occurredAt         DateTime         @default(now())
+  createdAt          DateTime         @default(now())
+
+  reputationEvents   ReputationEvent[]
+
+  @@index([requestId, occurredAt])
+  @@index([eventType])
+  @@index([idempotencyKey])
+}
+
+enum EvidenceType {
+  BILATERAL_COMPLETION
+  UNILATERAL_REVIEW_QUALIFIED
+  UNILATERAL_REVIEW_UNQUALIFIED
+  CONTACT_CONFIRMATION
+  PENALTY_SUSPICIOUS_ACTIVITY
+  PENALTY_POLICY_VIOLATION
+}
+
+model ReputationEvent {
+  id                   String        @id @default(cuid())
+  providerId           String
+  provider             Provider      @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  requestId            String?
+  request              QuoteThread?  @relation("RequestReputationEvents", fields: [requestId], references: [id], onDelete: SetNull)
+  evidenceType         EvidenceType
+  evidenceWeight       Float
+  sourceEventId        String?
+  sourceEvent          RequestEvent? @relation(fields: [sourceEventId], references: [id], onDelete: SetNull)
+  riskReportId         String?
+  riskReport           RiskReport?   @relation(fields: [riskReportId], references: [id], onDelete: SetNull)
+  algorithmVersion     String        @default("trust-v2.0.0")
+  invalidatedAt        DateTime?
+  invalidatedByAdminId String?
+  invalidatedByAdmin   User?         @relation("ReputationEventInvalidator", fields: [invalidatedByAdminId], references: [id], onDelete: SetNull)
+  invalidationReason   String?       @db.Text
+  createdAt            DateTime      @default(now())
+
+  @@unique([requestId, evidenceType])
+  @@index([providerId, createdAt])
+  @@index([evidenceType])
+  @@index([algorithmVersion])
+  @@index([sourceEventId])
+  @@index([riskReportId])
+  @@unique([riskReportId, evidenceType])
 }
 
 // ──────────────────────────────────────────────────────────
@@ -769,10 +949,35 @@ enum ClosureOutcome {
   CANCELLED_BY_PROVIDER // Proveedor canceló explícitamente sin interacción previa
   CANCELLED_BY_PROVIDER_AFTER_ENGAGEMENT // Proveedor canceló tras interacción (habilita reseña peso 0.5)
   MODERATION_CLOSURE // Cerrado por acción de moderación
+  DECLINED_BY_PROVIDER // Sprint 6: Proveedor rechaza ANTES de interactuar
+  EXPIRED_NO_PROVIDER_RESPONSE // Sprint 6: Nadie respondió jamás
+  ACCOUNT_DEACTIVATED // Sprint 6: Cuenta desactivada durante interacción
+  CLOSED_BY_ADMIN // Sprint 6: Cierre administrativo
 }
 
 enum ModerationState {
   CLEAN // Sin flags
   FLAGGED // Bajo revisión de moderación
   RESTRICTED // Restringido por moderación
+}
+
+enum RequestEventType {
+  REQUEST_CREATED
+  PROVIDER_RESPONDED
+  QUOTE_ACCEPTED
+  COMPLETION_REQUESTED
+  COMPLETION_CONFIRMED
+  COMPLETION_TIMEOUT
+  CANCELLED_BY_REQUESTER
+  CANCELLED_BY_PROVIDER
+  MODERATION_FLAG
+  MODERATION_CLOSURE
+  REOPENED
+  MESSAGE_SENT
+  DEADLINE_EXTENDED
+  ADMIN_OVERRIDE
+  COMPLETION_NOT_ACCEPTED // Sprint 6: Rechazo del cierre (P2 §4.3)
+  COMPLETION_REQUEST_WITHDRAWN // Sprint 6: Retiro del cierre (P2 §4.4)
+  REQUEST_DECLINED // Sprint 6: Proveedor rechaza solicitud
+  REQUEST_EXPIRED // Sprint 6: Expiración sin respuesta
 }

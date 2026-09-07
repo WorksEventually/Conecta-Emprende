@@ -67,11 +67,6 @@ const imageByCategory: Record<string, string> = {
   "Servicios tecnológicos":"https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=1000&q=80",
 };
 
-export function calculateTrustScore(input:{phoneVerified:boolean;profileComplete:boolean;requestsResponded:number;requestsCompleted:number;averageReview:number;accountAgeDays:number}){
-  const ageFactor=input.accountAgeDays<7?.2:input.accountAgeDays<30?.5:input.accountAgeDays<90?.8:1;
-  return Math.round((Number(input.phoneVerified)*15+Number(input.profileComplete)*15+Math.min(input.requestsResponded/5,1)*20+Math.min(input.requestsCompleted/10,1)*30+(input.averageReview/5)*20)*ageFactor);
-}
-
 export const seedProviders: ProviderProfile[] = Array.from({ length: 50 }, (_, index) => {
   const city = index === 0 ? "Managua" : CREATIVE_CITIES[index % CREATIVE_CITIES.length];
   const category = index === 1 ? "Empaques ecológicos" : index === 4 ? "Bordado y serigrafía" : index === 8 ? "Café y alimentos" : categories[index % categories.length];
@@ -80,7 +75,7 @@ export const seedProviders: ProviderProfile[] = Array.from({ length: 50 }, (_, i
   const verificationLevel: VerificationLevel = index % 4 === 0 ? "COMPLETE" : index % 3 === 0 ? "PHONE" : "UNVERIFIED";
   const accountAgeDays=index%9===0?5:index%7===0?20:index%4===0?65:180;
   const completedRequests=index%17;
-  const trustScore=calculateTrustScore({phoneVerified:verificationLevel!=="UNVERIFIED",profileComplete:true,requestsResponded:2+(index%8),requestsCompleted:completedRequests,averageReview:4+(index%2)*.5,accountAgeDays});
+  const trustScore = index % 5 === 0 ? 85 : index % 3 === 0 ? 70 : index % 2 === 0 ? 55 : 40;
   return {
     id: `provider-${index + 1}`, ownerUserId: index === 0 ? "user-provider" : `user-${index + 1}`,
     publicName: index === 0 ? "Estudio Creativo Managua" : `${nameByCategory[category]} ${nameSuffixes[Math.floor(index/10)]} ${city}`,

@@ -28,6 +28,11 @@ export const aiSearchProviderSchema = z.object({
   query: z.string().min(2, "La consulta debe tener al menos 2 caracteres"),
 });
 
+/**
+ * @deprecated Decision D-17: Legal formalization is outside MVP scope.
+ * This schema is preserved for API compatibility but the endpoints return 501.
+ * See constraints.md for details.
+ */
 export const formalizationUpdateSchema = z.object({
   providerId: z.string(),
   stepId: z.string(),
@@ -76,6 +81,7 @@ export const quoteUpdateSchema = z.object({
 
 export const quoteCompletionSchema = z.object({
   role: z.enum(["REQUESTER", "PROVIDER"]),
+  version: z.number().int().optional(),
 });
 
 export const quoteAcceptanceSchema = z.object({
@@ -96,12 +102,38 @@ export const riskReportStatusSchema = z.object({
 export const riskReportEscalateSchema = z.object({ reviewerNotes: optionalTrimmedText, reason: optionalTrimmedText })
   .refine((value) => Boolean(value.reviewerNotes || value.reason), { message: "Agregá una nota para escalar el reporte" });
 
+const dateOnlyPattern = /^\d{4}-\d{2}-\d{2}$/;
+
+function isValidDateOnly(value: string): boolean {
+  if (!dateOnlyPattern.test(value)) return false;
+  const [year, month, day] = value.split("-").map(Number);
+  const parsed = new Date(Date.UTC(year, month - 1, day));
+  return parsed.getUTCFullYear() === year
+    && parsed.getUTCMonth() === month - 1
+    && parsed.getUTCDate() === day;
+}
+
+const suspensionExpirySchema = z.union([
+  z.string().datetime({ message: "La fecha de suspensión no es válida" }),
+  z.string().regex(dateOnlyPattern, { message: "La fecha de suspensión no es válida" })
+    .refine(isValidDateOnly, { message: "La fecha de suspensión no es válida" }),
+]).transform((value) => dateOnlyPattern.test(value) ? `${value}T23:59:59.999Z` : value);
+
 export const providerSuspendSchema = z.object({
   reason: requiredReason,
-  suspendedUntil: z.string().datetime({ message: "La fecha de suspensión no es válida" }).optional(),
+  suspendedUntil: suspensionExpirySchema.optional(),
 });
 
 export const providerModerationReasonSchema = z.object({ reason: requiredReason });
+
+export const moderationApprovalActionSchema = z.object({
+  action: z.enum(["SUSPEND", "BAN"]),
+  reason: requiredReason,
+  suspendedUntil: suspensionExpirySchema.optional(),
+  riskReportId: z.string().trim().min(1).max(64).optional(),
+});
+
+export const moderationApprovalDecisionSchema = z.object({}).strict();
 
 export const providerCreateSchema = z.object({
   displayName: z.string().trim().min(1).max(120),
@@ -135,4 +167,12 @@ export const reviewUpdateSchema = z.object({
   comment: z.string().trim().max(5000).optional(),
 }).refine(data => Object.keys(data).length > 0, {
   message: "Debe enviar al menos un campo a actualizar",
+});
+
+export const commercialInteractionSchema = z.object({
+  note: z.string().trim().min(1, "La nota es obligatoria").max(2000, "La nota no puede superar 2000 caracteres"),
+});
+
+export const privateFeedbackSchema = z.object({
+  note: z.string().trim().min(1, "El feedback es obligatorio").max(3000, "El feedback no puede superar 3000 caracteres"),
 });

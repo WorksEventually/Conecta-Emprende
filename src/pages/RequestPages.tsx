@@ -104,6 +104,7 @@ export function NewRequestPage() {
             value={form.title}
             onChange={event => setForm({ ...form, title: event.target.value })}
             placeholder="Ej. 200 empaques para café"
+            maxLength={120}
           />
           {errors.title && <span className="field-error">{errors.title}</span>}
         </label>
@@ -114,6 +115,7 @@ export function NewRequestPage() {
             value={form.description}
             onChange={event => setForm({ ...form, description: event.target.value })}
             placeholder="Cantidad, medidas, materiales y cualquier detalle importante…"
+            maxLength={2000}
           />
           {errors.description && <span className="field-error">{errors.description}</span>}
         </label>
@@ -217,13 +219,13 @@ export function RequestsPage() {
               <div className="request-icon">
                 <MessageCircle />
               </div>
-              <div>
+              <div className="request-copy">
                 <div className="request-meta">
                   <RequestStatusBadge status={thread.status as any} />
                   <time>{thread.dateLabel || new Date(thread.createdAt).toLocaleDateString("es-NI")}</time>
                 </div>
-                <h2>{thread.subject}</h2>
-                <p>
+                <h2 className="request-title" title={thread.subject}>{thread.subject}</h2>
+                <p className="request-preview" title={`${thread.providerDisplayName || "Proveedor"}${thread.catalogItemId ? " · Producto" : ""} · ${thread.messages.at(-1)?.text || "Sin mensajes"}`}>
                   {thread.providerDisplayName || "Proveedor"}
                   {thread.catalogItemId ? " · Producto" : ""} · {thread.messages.at(-1)?.text}
                 </p>
@@ -251,6 +253,11 @@ export function RequestDetailPage() {
   const [editComment, setEditComment] = useState("");
   const [isSavingEdit, setIsSavingEdit] = useState(false);
   const [editError, setEditError] = useState("");
+  const [reviewEligibility, setReviewEligibility] = useState<Awaited<ReturnType<typeof ratingApi.getReviewEligibility>> | null>(null);
+  const [reviewError, setReviewError] = useState("");
+  const [privateFeedback, setPrivateFeedback] = useState("");
+  const [privateFeedbackError, setPrivateFeedbackError] = useState("");
+  const [isSavingPrivateFeedback, setIsSavingPrivateFeedback] = useState(false);
 
   const thread = currentThread;
   const provider = currentProvider?.provider;
@@ -278,9 +285,26 @@ export function RequestDetailPage() {
     }
   }, [thread?.providerId, thread?.id, user?.id]);
 
+  useEffect(() => {
+    if (thread?.id && user?.id) {
+      ratingApi.getReviewEligibility(thread.id)
+        .then(setReviewEligibility)
+        .catch(() => setReviewEligibility(null));
+    }
+  }, [thread?.id, user?.id]);
+
   const providerIdForUser = user?.providers?.[0]?.id || user?.providerProfileId;
   const isRequester = !!user && thread?.senderId === user.id;
   const isProviderParticipant = !!providerIdForUser && thread?.providerId === providerIdForUser;
+
+  useEffect(() => {
+    if (thread?.id && isProviderParticipant) {
+      fetch(`/api/quotes/${encodeURIComponent(thread.id)}/private-feedback`, { credentials: "include" })
+        .then(response => response.ok ? response.json() : null)
+        .then(payload => setPrivateFeedback(payload?.data?.note ?? ""))
+        .catch(() => {});
+    }
+  }, [thread?.id, isProviderParticipant]);
 
   const handleConfirm = async (as: "requester" | "provider") => {
     if (!thread) return;
@@ -310,6 +334,7 @@ export function RequestDetailPage() {
     event.preventDefault();
     if (!thread || !user) return;
     setIsReviewing(true);
+    setReviewError("");
     try {
       const res = await fetch("/api/reviews", {
         method: "POST",
@@ -330,8 +355,15 @@ export function RequestDetailPage() {
       if (data.success) {
         setReview("");
         setScore(5);
+         const refreshed = await ratingApi.getVerifiedReviews(thread.providerId);
+         const mine = refreshed.find(r => r.requestId === thread.id && r.reviewerId === user.id);
+         if (mine) setMyReview({ id: mine.id, score: mine.qualityScore, comment: mine.comment, createdAt: mine.createdAt });
+         setReviewEligibility(await ratingApi.getReviewEligibility(thread.id));
+      } else {
+        setReviewError(data.error || "No se pudo publicar la reseña");
       }
     } catch (e) {
+      setReviewError(e instanceof Error ? e.message : "No se pudo publicar la reseña");
       console.error("Review error:", e);
     } finally {
       setIsReviewing(false);
@@ -344,16 +376,17 @@ export function RequestDetailPage() {
     setIsSavingEdit(true);
     setEditError("");
     try {
-      await ratingApi.updateReview(myReview.id, {
+       await ratingApi.updateReview(myReview.id, {
         qualityScore: editScore,
         responseTimeScore: editScore,
         fulfillmentScore: editScore,
         communicationScore: editScore,
         valueScore: editScore,
         comment: editComment,
-      });
-      setMyReview({ id: myReview.id, score: editScore, comment: editComment, createdAt: myReview.createdAt });
-      setIsEditing(false);
+       });
+       setMyReview({ id: myReview.id, score: editScore, comment: editComment, createdAt: myReview.createdAt });
+       if (thread?.id) setReviewEligibility(await ratingApi.getReviewEligibility(thread.id));
+       setIsEditing(false);
     } catch (e) {
       setEditError(e instanceof Error ? e.message : "Error al editar reseña");
     } finally {
@@ -361,7 +394,29 @@ export function RequestDetailPage() {
     }
   };
 
-  const canEditReview = !!myReview && Date.now() - new Date(myReview.createdAt).getTime() <= 7 * 24 * 60 * 60 * 1000;
+  const handlePrivateFeedback = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!thread) return;
+    setIsSavingPrivateFeedback(true);
+    setPrivateFeedbackError("");
+    try {
+      const response = await fetch(`/api/quotes/${encodeURIComponent(thread.id)}/private-feedback`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ note: privateFeedback }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || "No se pudo guardar el feedback privado");
+    } catch (error) {
+      setPrivateFeedbackError(error instanceof Error ? error.message : "No se pudo guardar el feedback privado");
+    } finally {
+      setIsSavingPrivateFeedback(false);
+    }
+  };
+
+  const editableUntil = reviewEligibility?.editableUntil ? new Date(reviewEligibility.editableUntil) : null;
+  const canEditReview = !!myReview && !!editableUntil && Date.now() <= editableUntil.getTime();
 
   if (!requestId) {
     return (
@@ -416,7 +471,7 @@ export function RequestDetailPage() {
               Ver todos los mensajes
             </Link>
           </section>
-          {thread.status === "COMPLETED" && (
+          {isRequester && (myReview || reviewEligibility) && (
             <section className="content-section">
               <h2>Reseña del trabajo</h2>
               {myReview ? (
@@ -432,6 +487,7 @@ export function RequestDetailPage() {
                     <textarea
                       required
                       minLength={10}
+                      maxLength={1000}
                       value={editComment}
                       onChange={event => setEditComment(event.target.value)}
                       placeholder="¿Cómo fue trabajar con este proveedor?"
@@ -450,7 +506,8 @@ export function RequestDetailPage() {
                   <>
                     <p className="success-note">
                       <CheckCircle2 /> Ya dejaste una reseña ({myReview.score} ★)
-                      {!canEditReview && <span className="text-gray-400"> · La ventana de edición (7 días) ya cerró</span>}
+                       {editableUntil && canEditReview && <span className="text-[rgba(51,51,51,0.72)]"> · Podés editar hasta {editableUntil.toLocaleDateString("es-NI")}</span>}
+                       {!canEditReview && <span className="text-[rgba(51,51,51,0.72)]"> · La ventana de edición (7 días) ya cerró</span>}
                     </p>
                     {myReview.comment && <p>{myReview.comment}</p>}
                     {canEditReview && (
@@ -460,11 +517,12 @@ export function RequestDetailPage() {
                     )}
                   </>
                 )
-              ) : (
+              ) : reviewEligibility?.eligible ? (
                 <form onSubmit={handleAddReview}>
-                  <p className="success-note">
-                    <CheckCircle2 /> El trabajo fue completado. Podés dejar una reseña.
-                  </p>
+                   <p className="success-note">
+                     <CheckCircle2 /> {reviewEligibility?.route === "BILATERAL" ? "El trabajo fue completado." : "La solicitud tuvo interacción comercial suficiente."} Podés dejar una reseña.
+                   </p>
+                   {reviewError && <p className="form-error">{reviewError}</p>}
                   <div className="rating">
                     {[1, 2, 3, 4, 5].map(value => (
                       <button type="button" className={value <= score ? "active" : ""} onClick={() => setScore(value)} key={value}>
@@ -475,15 +533,42 @@ export function RequestDetailPage() {
                   <textarea
                     required
                     minLength={10}
+                    maxLength={1000}
                     value={review}
                     onChange={event => setReview(event.target.value)}
                     placeholder="¿Cómo fue trabajar con este proveedor?"
                   />
-                  <button className="button primary" disabled={isReviewing}>
+                   <button className="button primary" disabled={isReviewing}>
                     {isReviewing ? "Publicando..." : "Publicar reseña"}
                   </button>
                 </form>
+              ) : (
+                <p className="form-error">
+                  No podés reseñar esta solicitud todavía: {reviewEligibility?.reason === "NO_ENGAGEMENT_BEFORE_CANCELLATION"
+                    ? "no se comprobó suficiente interacción comercial."
+                    : "el cierre actual no habilita una reseña."}
+                </p>
               )}
+            </section>
+          )}
+          {isProviderParticipant && thread.workflow_phase === "CLOSED" && (
+            <section className="content-section">
+              <h2>Feedback privado del proveedor</h2>
+              <p>Este comentario queda privado y no modifica tu reputación ni el trust score del proveedor.</p>
+              <form onSubmit={handlePrivateFeedback}>
+                <textarea
+                  required
+                  minLength={1}
+                  maxLength={3000}
+                  value={privateFeedback}
+                  onChange={event => setPrivateFeedback(event.target.value)}
+                  placeholder="Compartí información útil sobre la interacción con el cliente."
+                />
+                {privateFeedbackError && <p className="form-error">{privateFeedbackError}</p>}
+                <button className="button secondary" disabled={isSavingPrivateFeedback}>
+                  {isSavingPrivateFeedback ? "Guardando..." : "Guardar feedback privado"}
+                </button>
+              </form>
             </section>
           )}
         </main>

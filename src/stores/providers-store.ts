@@ -19,7 +19,7 @@ export interface ProviderSearchResult {
   verified: boolean;
   verificationLevel: string | null;
   formalizationStatus: string;
-  trustScore: number;
+  trustScore: number | null;
   responseTimeHrs: number | null;
   completedRequests: number;
   photos: string[];

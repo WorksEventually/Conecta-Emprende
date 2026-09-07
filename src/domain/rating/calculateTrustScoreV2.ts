@@ -1,3 +1,8 @@
+export const TRUST_SCORE_ALGORITHM_VERSION = "trust-v2.0.0";
+export const MINIMUM_BILATERAL_COMPLETIONS = 3;
+
+export type TrustScoreEvidenceLevel = "INSUFFICIENT_EVIDENCE" | "OK";
+
 export type TrustScoreV2Input = {
   hasBio: boolean;
   hasLogo: boolean;
@@ -7,113 +12,272 @@ export type TrustScoreV2Input = {
   emailVerified: boolean;
   phoneVerified: boolean;
 
-  requestsResponded: number;
-  requestsIgnored: number;
+  eligibleInboundRequests?: number;
+  respondedEligibleRequests?: number;
+  medianFirstResponseHours?: number | null;
 
   bilateralCompletionsByRequester: Map<string, number>;
 
   weightedReviews: Array<{ score: number; weight: number }>;
 
-  uniqueRequesters: number;
+  eligibleUniqueRequesters?: number;
+  providerAgeDays?: number;
 
-  accountAgeDays: number;
+  eligibleEngagements?: number;
+  adverseProviderEvents?: number;
+  confirmedRiskPenalty?: number;
+  daysSinceLastBilateralCompletion?: number | null;
+  moderationCap?: number;
 
-  responseTimeHrs: number | null;
+  /** Compatibility alias for callers that still provide the old field. */
+  requestsResponded?: number;
+  /** Compatibility alias for callers that still provide the old field. */
+  requestsIgnored?: number;
+  /** Compatibility alias for callers that still provide account age. */
+  accountAgeDays?: number;
+  /** Compatibility alias for callers that still provide response time. */
+  responseTimeHrs?: number | null;
+  /** Compatibility alias for the old risk field. */
+  suspiciousActivityPenalty?: number;
+  /** Compatibility alias for the old diversity field. */
+  uniqueRequesters?: number;
+};
 
-  suspiciousActivityPenalty: number;
+export type TrustScoreBreakdown = {
+  profileCompleteness: number;
+  contactConfirmation: number;
+  responseBehavior: number;
+  completionHistory: number;
+  ratingQuality: number;
+  requesterDiversity: number;
+  providerMaturity: number;
+  operationalReliability: number;
+  confirmedRiskPenalty: number;
+  profile: number;
+  contact: number;
+  response: number;
+  completion: number;
+  rating: number;
+  diversity: number;
+  maturity: number;
+  reliability: number;
+  penalty: number;
+};
+
+export type TrustScoreCaps = {
+  completion: number;
+  diversity: number;
+  providerAge: number;
+  reviewEvidence: number;
+  confirmationRate: number;
+  recency: number;
+  moderation: number;
 };
 
 export type TrustScoreV2Result = {
   public_score: number | null;
   internal_score: number;
+  evidence_level: TrustScoreEvidenceLevel;
+  algorithm_version: string;
   reason: string | null;
-  breakdown: {
-    profile: number;
-    contact: number;
-    response: number;
-    completion: number;
-    rating: number;
-    diversity: number;
-    maturity: number;
-    reliability: number;
-    penalty: number;
-  };
+  breakdown: TrustScoreBreakdown;
+  caps: TrustScoreCaps;
 };
 
 const clamp = (value: number, min = 0, max = 100) => Math.min(max, Math.max(min, value));
+const nonNegative = (value: number | undefined) => Math.max(0, value ?? 0);
+
+function responseTimePoints(hours: number | null): number {
+  if (hours === null || !Number.isFinite(hours)) return 0;
+  if (hours <= 1) return 4;
+  if (hours <= 6) return 3;
+  if (hours <= 24) return 2;
+  if (hours <= 72) return 1;
+  return 0;
+}
+
+function completionCap(completions: number): number {
+  if (completions < 3) return 20;
+  if (completions <= 7) return 35;
+  if (completions <= 15) return 50;
+  if (completions <= 30) return 65;
+  if (completions <= 50) return 80;
+  if (completions <= 99) return 90;
+  return 100;
+}
+
+function diversityCap(requesters: number): number {
+  if (requesters <= 2) return 25;
+  if (requesters <= 7) return 45;
+  if (requesters <= 14) return 65;
+  if (requesters <= 24) return 80;
+  if (requesters <= 49) return 90;
+  return 100;
+}
+
+function providerAgeCap(days: number): number {
+  if (days < 30) return 30;
+  if (days < 90) return 45;
+  if (days < 180) return 60;
+  if (days < 365) return 75;
+  if (days < 730) return 90;
+  return 100;
+}
+
+function reviewEvidenceCap(weight: number): number {
+  if (weight <= 0) return 70;
+  if (weight < 5) return 75;
+  if (weight < 15) return 85;
+  if (weight < 30) return 90;
+  if (weight < 60) return 95;
+  return 100;
+}
+
+function recencyCap(days: number | null | undefined): number {
+  if (days == null) return 65;
+  if (days <= 90) return 100;
+  if (days <= 180) return 95;
+  if (days <= 365) return 90;
+  if (days <= 730) return 80;
+  return 65;
+}
+
+function calculateCompletionHistory(
+  completionsByRequester: Map<string, number>
+): { score: number; total: number } {
+  let weightedCompletions = 0;
+  let total = 0;
+
+  for (const count of completionsByRequester.values()) {
+    const completions = Math.max(0, Math.floor(count));
+    total += completions;
+    const contribution = completions === 0 ? 0 : completions === 1 ? 1 : completions === 2 ? 1.5 : 1.5 + (completions - 2) * 0.2;
+    weightedCompletions += Math.min(contribution, 2);
+  }
+
+  return {
+    score: 30 * Math.min(weightedCompletions / 50, 1),
+    total,
+  };
+}
 
 export function calculateTrustScoreV2(input: TrustScoreV2Input): TrustScoreV2Result {
-  const profile =
+  const eligibleInboundRequests = nonNegative(input.eligibleInboundRequests ?? input.requestsResponded);
+  const respondedEligibleRequests = Math.min(
+    eligibleInboundRequests,
+    nonNegative(input.respondedEligibleRequests ?? input.requestsResponded)
+  );
+  const ignoredRequests = nonNegative(input.requestsIgnored);
+  const denominator = eligibleInboundRequests || respondedEligibleRequests + ignoredRequests;
+  const smoothedResponseRate =
+    (respondedEligibleRequests + 4) / (denominator + 5);
+  const responseBehavior = 6 * smoothedResponseRate + responseTimePoints(
+    input.medianFirstResponseHours ?? input.responseTimeHrs ?? null
+  );
+
+  const completion = calculateCompletionHistory(input.bilateralCompletionsByRequester);
+  const bilateralCompletions = completion.total;
+  const weightedReviewCount = input.weightedReviews.reduce((sum, review) => sum + review.weight, 0);
+  const weightedRatingTotal = input.weightedReviews.reduce(
+    (sum, review) => sum + review.score * review.weight,
+    0
+  );
+  const bayesianAverage = (4 * 10 + weightedRatingTotal) / (10 + weightedReviewCount);
+  const ratingConfidence = Math.min(Math.sqrt(weightedReviewCount / 30), 1);
+
+  const profileCompleteness =
     (input.hasBio ? 2 : 0) +
     (input.hasLogo ? 1 : 0) +
     (input.hasLocation ? 1 : 0) +
     (input.hasHours ? 1 : 0);
-
-  const contact =
-    (input.emailVerified ? 2 : 0) +
-    (input.phoneVerified ? 3 : 0);
-
-  const totalRequests = input.requestsResponded + input.requestsIgnored;
-  const responseRate = totalRequests > 0 ? input.requestsResponded / totalRequests : 0;
-  const response = Math.round(responseRate * 10);
-
-  let weightedCompletions = 0;
-  for (const count of input.bilateralCompletionsByRequester.values()) {
-    if (count === 1) weightedCompletions += 1.0;
-    else if (count === 2) weightedCompletions += 1.5;
-    else weightedCompletions += 2.0;
-  }
-  const completion = Math.min(Math.round((weightedCompletions / 15) * 30), 30);
-
-  const priorMean = 4.0;
-  const priorWeight = 10;
-  const sumWeightedRatings = input.weightedReviews.reduce(
-    (sum, r) => sum + r.score * r.weight,
-    0
+  const contactConfirmation = (input.emailVerified ? 2 : 0) + (input.phoneVerified ? 3 : 0);
+  const completionHistory = completion.score;
+  const ratingQuality = (bayesianAverage / 5) * 25 * ratingConfidence;
+  const requesterDiversity = 10 * Math.min(nonNegative(input.eligibleUniqueRequesters ?? input.uniqueRequesters) / 25, 1);
+  const providerAgeDays = nonNegative(input.providerAgeDays ?? input.accountAgeDays);
+  const providerMaturity =
+    providerAgeDays < 30 ? 0 :
+    providerAgeDays < 90 ? 2 :
+    providerAgeDays < 180 ? 4 :
+    providerAgeDays < 365 ? 6 :
+    providerAgeDays < 730 ? 8 : 10;
+  const eligibleEngagements = nonNegative(input.eligibleEngagements);
+  const adverseProviderEvents = nonNegative(input.adverseProviderEvents);
+  const reliabilityRate = (eligibleEngagements - adverseProviderEvents + 4) / (eligibleEngagements + 5);
+  const operationalReliability = 5 * clamp(reliabilityRate, 0, 1);
+  const confirmedRiskPenalty = clamp(
+    input.confirmedRiskPenalty ?? input.suspiciousActivityPenalty ?? 0,
+    0,
+    40
   );
-  const sumWeights = input.weightedReviews.reduce((sum, r) => sum + r.weight, 0);
-  const bayesianAvg = (priorMean * priorWeight + sumWeightedRatings) / (priorWeight + sumWeights);
-  const rating = Math.round((bayesianAvg / 5.0) * 25);
 
-  const diversity =
-    input.uniqueRequesters === 0 ? 0 :
-    input.uniqueRequesters === 1 ? 0 :
-    input.uniqueRequesters <= 3 ? 3 :
-    input.uniqueRequesters <= 5 ? 6 :
-    10;
+  const breakdown: TrustScoreBreakdown = {
+    profileCompleteness,
+    contactConfirmation,
+    responseBehavior,
+    completionHistory,
+    ratingQuality,
+    requesterDiversity,
+    providerMaturity,
+    operationalReliability,
+    confirmedRiskPenalty,
+    profile: profileCompleteness,
+    contact: contactConfirmation,
+    response: responseBehavior,
+    completion: completionHistory,
+    rating: ratingQuality,
+    diversity: requesterDiversity,
+    maturity: providerMaturity,
+    reliability: operationalReliability,
+    penalty: confirmedRiskPenalty,
+  };
 
-  const maturity =
-    input.accountAgeDays < 30 ? 0 :
-    input.accountAgeDays < 90 ? 5 :
-    10;
-
-  const reliability =
-    input.responseTimeHrs === null ? 0 :
-    input.responseTimeHrs < 24 ? 5 :
-    input.responseTimeHrs < 48 ? 3 :
-    input.responseTimeHrs < 72 ? 1 :
-    0;
-
-  const penalty = Math.min(input.suspiciousActivityPenalty, 40);
-
+  const rawTrustScore =
+    profileCompleteness + contactConfirmation + responseBehavior + completionHistory +
+    ratingQuality + requesterDiversity + providerMaturity + operationalReliability;
+  const weightedEngagements = bilateralCompletions + adverseProviderEvents;
+  const confirmationRate = weightedEngagements >= 10
+    ? bilateralCompletions / Math.max(weightedEngagements, 1)
+    : null;
+  const confirmationRateCap = confirmationRate === null
+    ? 100
+    : confirmationRate < 0.4 ? 50
+    : confirmationRate < 0.6 ? 65
+    : confirmationRate < 0.7 ? 80
+    : confirmationRate < 0.8 ? 90
+    : 100;
+  const caps: TrustScoreCaps = {
+    completion: completionCap(bilateralCompletions),
+    diversity: diversityCap(nonNegative(input.eligibleUniqueRequesters ?? input.uniqueRequesters)),
+    providerAge: providerAgeCap(providerAgeDays),
+    reviewEvidence: reviewEvidenceCap(weightedReviewCount),
+    confirmationRate: confirmationRateCap,
+    recency: recencyCap(input.daysSinceLastBilateralCompletion),
+    moderation: clamp(input.moderationCap ?? 100),
+  };
   const internal_score = Math.round(clamp(
-    profile + contact + response + completion + rating +
-    diversity + maturity + reliability - penalty
+    Math.min(
+      Math.max(0, rawTrustScore - confirmedRiskPenalty),
+      caps.completion,
+      caps.diversity,
+      caps.providerAge,
+      caps.reviewEvidence,
+      caps.confirmationRate,
+      caps.recency,
+      caps.moderation
+    )
   ));
-
-  const totalBilateral = Array.from(input.bilateralCompletionsByRequester.values())
-    .reduce((sum, c) => sum + c, 0);
-
-  const public_score = totalBilateral >= 3 ? internal_score : null;
-  const reason = totalBilateral < 3 ? 'INSUFFICIENT_EVIDENCE' : null;
+  const evidence_level: TrustScoreEvidenceLevel = bilateralCompletions >= MINIMUM_BILATERAL_COMPLETIONS
+    ? "OK"
+    : "INSUFFICIENT_EVIDENCE";
 
   return {
-    public_score,
+    public_score: evidence_level === "OK" ? internal_score : null,
     internal_score,
-    reason,
-    breakdown: {
-      profile, contact, response, completion, rating,
-      diversity, maturity, reliability, penalty
-    }
+    evidence_level,
+    algorithm_version: TRUST_SCORE_ALGORITHM_VERSION,
+    reason: evidence_level === "OK" ? null : "INSUFFICIENT_EVIDENCE",
+    breakdown,
+    caps,
   };
 }

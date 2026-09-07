@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Wireframes de baja/media fidelidad · Conecta Emprende AI</title>
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;font-family:"Segoe UI",Inter,system-ui,sans-serif;background:#f4f4f4;color:#222;line-height:1.35}
+  .page{max-width:1180px;margin:0 auto;padding:28px 20px 80px}
+  header.hero{border-bottom:2px solid #888;padding-bottom:14px;margin-bottom:18px}
+  header.hero h1{font-size:26px;margin:0 0 4px}
+  header.hero p{margin:2px 0;color:#444;font-size:13px}
+  nav.screens{display:flex;flex-wrap:wrap;gap:6px;margin:14px 0 6px;position:sticky;top:0;background:#f4f4f4;padding:8px 0;z-index:5}
+  nav.screens a{font-size:11px;text-decoration:none;border:1px solid #888;border-radius:20px;padding:3px 9px;background:#fff;color:#333}
+  nav.screens a:hover{background:#dcdcdc}
+  .screen{margin:44px 0 0;border-top:2px dashed #999;padding-top:18px}
+  .screen-head h2{margin:0 0 2px;font-size:20px}
+  .screen-head .route{font-family:Consolas,monospace;font-size:12px;background:#e3e3e3;border:1px solid #aaa;border-radius:4px;padding:2px 7px;display:inline-block;margin-bottom:4px}
+  .screen-head .meta{font-size:12px;color:#555}
+  .wf{border:2px solid #555;background:#fff;border-radius:8px;overflow:hidden;margin-top:10px}
+  .wf-bar{background:#d9d9d9;padding:5px 10px;font-size:11px;color:#333;display:flex;gap:12px;border-bottom:1px solid #999;align-items:center}
+  .wf-bar .dot{width:9px;height:9px;border-radius:50%;background:#b7b7b7;display:inline-block}
+  .wf-body{padding:14px}
+  .box{border:1px solid #6b6b6b;background:#e8e8e8;padding:7px 9px;position:relative;min-height:22px;font-size:11px;color:#444}
+  .box.dark{background:#9a9a9a;color:#fff}
+  .box.lite{background:#f2f2f2}
+  .box.solid{background:#c9c9c9}
+  .box.dashed{border-style:dashed;background:#f6f6f6}
+  .row{display:flex;gap:8px;align-items:stretch}
+  .col{flex:1}
+  .col.g2{flex:2}.col.g3{flex:3}.col.g4{flex:4}
+  .stack>*+*{margin-top:8px}
+  .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+  .grid2{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+  .tag{font-size:9px;text-transform:uppercase;letter-spacing:.06em;background:#d6d6d6;border:1px solid #8a8a8a;border-radius:3px;padding:1px 6px;color:#3a3a3a;white-space:nowrap}
+  .btn{display:inline-block;border:1px solid #5c5c5c;background:#cfcfcf;border-radius:5px;padding:5px 12px;font-size:11px;color:#222;text-align:center}
+  .btn.primary{background:#8f8f8f;color:#fff}
+  .btn.disabled{opacity:.45}
+  .inp{display:block;border:1px solid #7a7a7a;background:#fff;border-radius:4px;padding:5px 8px;font-size:11px;color:#999;margin-top:3px}
+  .note{font-size:11px;color:#4a4a4a;background:#f2f2f2;border-left:3px solid #9e9e9e;padding:6px 10px;margin-top:8px}
+  .note b{color:#222}
+  .chip{border:1px solid #777;background:#e2e2e2;border-radius:20px;padding:3px 10px;font-size:10px;color:#444;display:inline-block}
+  .monogram{width:30px;height:30px;border-radius:6px;background:#9a9a9a;color:#fff;display:grid;place-items:center;font-size:12px;font-weight:700}
+  .bar{height:10px;background:#cfcfcf;border-radius:5px;display:inline-block}
+  .wb{text-align:center;color:#999;font-size:11px;font-style:italic}
+  hr.sep{border:0;border-top:1px dashed #aaa;margin:12px 0}
+</style>
+</head>
+<body>
+<div class="page">
+<header class="hero">
+  <h1>Wireframes de baja/media fidelidad — Conecta Emprende AI</h1>
+  <p>Representación estructural de cada pantalla del MVP, extraída del código real (rama <code>test</code> · <code>99929d9</code>). Escala de grises a propósito: aquí se valida <b>estructura, jerarquía y navegación</b>, no estilo visual.</p>
+  <p>Uso: navegar por el índice, revisar cada pantalla y contrastar las notas con el MVP en <code>localhost:3000</code>.</p>
+</header>
+<nav class="screens">
+  <a href="#s1">1. Inicio</a>
+  <a href="#s2">2. Buscar</a>
+  <a href="#s3">3. Perfil proveedor</a>
+  <a href="#s4">4. Oferta</a>
+  <a href="#s5">5. Iniciar sesión</a>
+  <a href="#s6">6. Crear cuenta</a>
+  <a href="#s7">7. Nueva solicitud</a>
+  <a href="#s8">8. Mis solicitudes</a>
+  <a href="#s9">9. Detalle solicitud</a>
+  <a href="#s10">10. Chat + acuerdo</a>
+  <a href="#s11">11. Mi perfil (proveedor)</a>
+  <a href="#s12">12. Mi perfil (solicitante)</a>
+  <a href="#s13">13. Editar perfil público</a>
+  <a href="#s14">14. Administrar catálogo</a>
+  <a href="#s15">15. Confianza</a>
+  <a href="#s16">16. Seguridad</a>
+</nav>
+<section class="screen" id="s1">
+  <div class="screen-head"><h2>1. Inicio</h2><div><span class="route">/</span></div><div class="meta">Pública · Prioridad alta en demo</div></div>
+  <div class="wf"><div class="wf-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span style="flex:1;text-align:center">conecta-emprende.local</span></div>
+    <div class="wf-body">
+      <div class="row">
+        <div class="col g4 stack">
+          <div class="box lite"><span class="tag">Eyebrow · MapaPin</span> Hecho para emprender en Nicaragua</div>
+          <div class="box dark" style="font-size:20px">H1 — Encontrá quién puede ayudarte a dar el siguiente paso</div>
+          <div class="box lite">Intro textual de la búsqueda en lenguaje natural</div>
+          <div class="box solid">
+            <div class="row">
+              <div class="col" style="flex:0 0 auto"><span class="tag">Ícono lupa</span></div>
+              <div class="col"><span class="inp" style="background:#fff;color:#666">¿Qué necesitás? Escribilo como un mensaje…</span></div>
+              <div class="col" style="flex:0 0 auto"><span class="btn primary">Buscar proveedores</span></div>
+            </div>
+          </div>
+          <div><span class="chip">Empaques ecológicos en León</span> <span class="chip">Diseño de logos en Managua</span> <span class="chip">Café orgánico en Matagalpa</span></div>
+          <div class="box dashed">Enlace texto — Explorar ciudades creativas (→ /search)</div>
+        </div>
+        <div class="col g2 stack">
+          <div class="box">Bloque de prueba: red local · decisiones con evidencia</div>
+          <div class="grid3">
+            <div class="box lite"><b>50</b> proveedores de demostración</div>
+            <div class="box lite"><b>10</b> ciudades creativas</div>
+            <div class="box lite"><b>1</b> flujo completo de confianza</div>
+          </div>
+        </div>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <div class="box lite">° Verificación: sabés qué se confirmó</div>
+        <div class="box lite">° Reseñas con respaldo (confirmación bilateral)</div>
+        <div class="box lite">° Solicitudes dentro de la app</div>
+      </div>
+      <div class="note"><b>Notas:</b> el error de búsqueda vacía aparece bajo el input («Escribí lo que necesitás…») con rol=alert. Los chips ejecutan búsqueda directa.</div>
+    </div>
+  </div>
+</section>
+<section class="screen" id="s2">
+  <div class="screen-head"><h2>2. Buscar proveedores</h2><div><span class="route">/search</span></div><div class="meta">Pública · Layout desktop: lista + mapa · Móvil: toggle lista/mapa</div></div>
+  <div class="wf"><div class="wf-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span style="flex:1;text-align:center">/search?query=…</span></div>
+    <div class="wf-body">
+      <div class="box solid">Barra de búsqueda (debounced 400 ms) + chips de intención corregibles (ciudad/categoría con ✕) + filtros: ciudad · categoría · precio · confianza mínima</div>
+      <div class="row" style="margin-top:10px">
+        <div class="col g4 stack">
+          <div class="box lite"><span class="tag">Fila de resultados (lista)</span></div>
+          <div class="box">[Tarjeta proveedor] — Categoría · Nombre · TrustBadge<br><span class="tag">Foto</span> <span class="tag">Descripción corta</span> <span class="tag">MapPin ciudad</span> <span class="tag">Precio</span> <span class="tag">Disponibilidad</span> <span class="tag">Verificación</span><br><span class="tag">Fila: Recomendado porque combina confianza/experiencia + disponibilidad</span></div>
+          <div class="box">[Tarjeta] CTA: <span class="btn primary">Solicitar cotización</span> / <span class="btn">Ver perfil</span> (o «Editar mi perfil» / estado baneado/suspendido si corresponde, o «Solicitar cotización» si es otro proveedor)</div>
+          <div class="box">[Tarjeta] …</div>
+          <div class="box dashed">Vacío: «No encontramos proveedores exactos — Probá con otra ciudad, categoría o rango»</div>
+        </div>
+        <div class="col g2">
+          <div class="box solid" style="min-height:240px;position:relative">Mapa interactivo (Leaflet)<br><span class="tag" style="position:absolute;right:8px;bottom:8px">hover/click ↔ sincroniza con lista</span></div>
+        </div>
+      </div>
+      <div class="note"><b>Notas:</b> la IA infiere ciudad/categoría y las muestra como chips editables. Errores de IA (503/429/499) → fallback a búsqueda por keywords con mensaje y reintento. Proveedor suspendido/baneado muestra botón deshabilitado explicativo.</div>
+    </div>
+  </div>
+</section>
+<section class="screen" id="s3">
+  <div class="screen-head"><h2>3. Perfil público del proveedor</h2><div><span class="route">/providers/:providerId</span></div><div class="meta">Pública · Cover + grid con sidebar</div></div>
+  <div class="wf"><div class="wf-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span style="flex:1;text-align:center">/providers/:id</span></div>
+    <div class="wf-body">
+      <div class="box dark" style="padding:14px">
+        <span class="tag" style="background:#e2e2e2;color:#444">← Volver a resultados</span>
+        <div style="margin-top:8px"><span class="tag" style="background:#cfcfcf">Categoría</span></div>
+        <div style="font-size:18px;color:#fff;margin-top:4px">Nombre del negocio (H1)</div>
+        <div style="color:#e7e7e7">Frase corta / tagline</div>
+        <div><span class="tag">MapPin ciudad</span> <span class="tag">Calendario disponibilidad</span> <span class="tag">Reloj: Responde en N h</span></div>
+        <div><span class="tag">Confianza NN</span> <span class="tag">Verificación</span> <span class="tag">Señal del perfil</span></div>
+        <div class="row" style="margin-top:8px"><span class="btn primary">Chatear y solicitar cotización</span> <span class="btn">Ver productos y servicios ↓</span></div>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <div class="col g3 stack">
+          <div class="box lite">[Banner de estado si SUSPENDED/BANNED — heading + motivo + vigencia + si aún puede recibir solicitudes]</div>
+          <div class="box">Sección: Acerca de / descripción del negocio</div>
+          <div class="box">Tabs de catálogo: Todos · Productos · Servicios · Paquetes · Portafolio<br><span class="tag">tarjeta oferta 1</span> <span class="tag">tarjeta oferta 2</span> <span class="tag">tarjeta oferta 3</span></div>
+          <div class="box">Reseñas verificadas — estrellas + comentario + sello «Trabajo confirmado por ambas partes»<br><span class="box dashed" style="margin-top:6px">Vacío: «Todavía no hay reseñas verificadas»</span></div>
+        </div>
+        <div class="col g2 stack">
+          <div class="box">Sidebar: Confianza y reputación<br>◉ score /100 · Verificación · Trabajos bilaterales · Reseña promedio<br><span class="tag">Enlace: Cómo funciona la confianza</span></div>
+          <div class="box">Medallas (Award badges)</div>
+          <div class="box">Señales del perfil (perfil + catálogo + verificación + actividad)</div>
+          <div class="box">Acciones: Guardar · [Editar perfil si es dueño] · Compartir (deshabilitado) · Reportar perfil</div>
+        </div>
+      </div>
+      <div class="note"><b>Notas:</b> modal de reporte (motivo + descripción ≥10) avisa que no hay sanciones automáticas. Perfil DRAFT no visible públicamente.</div>
+    </div>
+  </div>
+</section>
+
+<section class="screen" id="s4">
+  <div class="screen-head"><h2>4. Detalle de oferta (producto/servicio)</h2><div><span class="route">/providers/:providerId/products/:productId</span></div><div class="meta">Pública · Imagen + hechos clave + CTA</div></div>
+  <div class="wf"><div class="wf-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span style="flex:1;text-align:center">/providers/:id/products/:pid</span></div>
+    <div class="wf-body">
+      <div class="box lite"><span class="tag">← Perfil del proveedor</span></div>
+      <div class="row" style="margin-top:8px">
+        <div class="col g2"><div class="box solid" style="min-height:180px">Imagen principal / portafolio</div></div>
+        <div class="col g3 stack">
+          <div class="box lite"><span class="tag">Eyebrow: Tipo · Categoría</span></div>
+          <div class="box dark" style="font-size:17px">Título de la oferta (H1)</div>
+          <div class="box lite">Descripción (lead)</div>
+          <div class="grid3">
+            <div class="box lite">Precio<br><b>C$ 1.200 – C$ 1.800</b></div>
+            <div class="box lite">Entrega<br><b>Por acordar / plazos</b></div>
+            <div class="box lite">Disponibilidad<br><b>Disponible / etc.</b></div>
+          </div>
+          <div class="box lite">Resumen del proveedor: nombre · ciudad · categoría + TrustBadge</div>
+          <div class="row"><span class="btn primary">Consultar por este producto</span></div>
+          <div class="box dashed">Nota: la conversación quedará vinculada a esta oferta y puede desbloquear reseña verificada.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+<section class="screen" id="s5">
+  <div class="screen-head"><h2>5. Iniciar sesión</h2><div><span class="route">/auth/login</span></div><div class="meta">Pública · Tarjeta centrada · Sin layout global</div></div>
+  <div class="wf"><div class="wf-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span style="flex:1;text-align:center">/auth/login</span></div>
+    <div class="wf-body" style="display:grid;place-items:center">
+      <div class="box" style="width:340px;max-width:100%">
+        <div class="stack">
+          <div class="row" style="align-items:center;justify-content:center"><span class="monogram">CE</span> <b>Conecta Emprende</b></div>
+          <div style="text-align:center"><b>Iniciar sesión</b><br><span class="tag">Ingresá a tu cuenta para continuar</span></div>
+          <div class="box lite" style="text-align:center">[Banner de error si login falla / error OAuth Google]</div>
+          <div class="box lite" style="text-align:center">Continuar con Google</div>
+          <div class="box dashed" style="text-align:center">— o —</div>
+          <div class="box lite"><span class="tag">Correo electrónico</span><span class="inp">tu@email.com</span></div>
+          <div class="box lite"><span class="tag">Contraseña (ojo: mostrar/ocultar)</span><span class="inp">••••••••</span></div>
+          <div><input type="checkbox" disabled /> Recordarme</div>
+          <span class="btn primary" style="text-align:center">Iniciar sesión</span>
+          <div style="text-align:center" class="box dashed">¿No tenés cuenta? → Crear cuenta</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="screen" id="s6">
+  <div class="screen-head"><h2>6. Crear cuenta</h2><div><span class="route">/auth/register</span></div><div class="meta">Pública · Tarjeta centrada · Valida fortaleza de contraseña</div></div>
+  <div class="wf"><div class="wf-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span style="flex:1;text-align:center">/auth/register</span></div>
+    <div class="wf-body" style="display:grid;place-items:center">
+      <div class="box" style="width:340px;max-width:100%">
+        <div class="stack">
+          <div class="row" style="align-items:center;justify-content:center"><span class="monogram">CE</span> <b>Conecta Emprende</b></div>
+          <div style="text-align:center"><b>Crear cuenta</b><br><span class="tag">Unite a la red de emprendedores</span></div>
+          <div class="box lite" style="text-align:center">Continuar con Google</div>
+          <div class="box dashed" style="text-align:center">— o —</div>
+          <div class="box lite"><span class="tag">Nombre completo</span><span class="inp">Tu nombre</span></div>
+          <div class="box lite"><span class="tag">Correo electrónico</span><span class="inp">tu@email.com</span></div>
+          <div class="box lite"><span class="tag">Contraseña (mín. 8, mayúscula, número, especial)</span><span class="inp">••••••••</span></div>
+          <div class="box dashed">Medidor de fortaleza: débil → casi ahí → ¡segura! (reglas: 8+, mayúscula, número, especial)</div>
+          <span class="btn primary" style="text-align:center">Crear cuenta</span>
+          <div class="box dashed" style="font-size:10px">Al crear una cuenta aceptás nuestros Términos de servicio y Política de privacidad</div>
+          <div style="text-align:center" class="box dashed">¿Ya tenés cuenta? → Iniciar sesión</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+<section class="screen" id="s7">
+  <div class="screen-head"><h2>7. Nueva solicitud de cotización</h2><div><span class="route">/requests/new?providerId=…&productId=…</span></div><div class="meta">Protegida · Formulario estrecho · Entrada desde perfil u oferta</div></div>
+  <div class="wf"><div class="wf-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span style="flex:1;text-align:center">/requests/new</span></div>
+    <div class="wf-body">
+      <div class="box lite"><span class="tag">← Volver al perfil</span></div>
+      <div class="box dark" style="font-size:16px">Cotizá con {Nombre del proveedor}</div>
+      <div class="box lite">La solicitud abrirá una conversación protegida dentro de la plataforma.</div>
+      <hr class="sep">
+      <div class="stack">
+        <div class="box lite"><span class="tag">Título de la solicitud (requerido)</span><span class="inp">Ej. 200 empaques para café</span></div>
+        <div class="box lite"><span class="tag">Descripción (requerida, ≥20 caracteres)</span><span class="inp">Cantidad, medidas, materiales y cualquier detalle importante…</span></div>
+        <div class="grid2">
+          <div class="box lite"><span class="tag">Fecha deseada</span><span class="inp">dd/mm/aaaa</span></div>
+          <div class="box lite"><span class="tag">Presupuesto</span><span class="inp">Sin definir · Económico · Intermedio · Premium · Negociable</span></div>
+          <div class="box lite"><span class="tag">Ciudad</span><span class="inp">Managua y 9 más</span></div>
+          <div class="box lite"><span class="tag">Canal principal</span><span class="inp">Mensajes de la plataforma (único en MVP)</span></div>
+        </div>
+        <div class="box dashed">Mantener la conversación acá permite confirmar el trabajo y desbloquear una reseña verificada.</div>
+        <span class="btn primary" style="text-align:center">Chatear y solicitar cotización</span>
+      </div>
+      <div class="note"><b>Notas:</b> errores bajo cada campo. Si el proveedor está SUSPENDED, el botón se muestra deshabilitado («Proveedor no disponible»). Si falta providerId → estado vacío con guía.</div>
+    </div>
+  </div>
+</section>
+
+<section class="screen" id="s8">
+  <div class="screen-head"><h2>8. Mis solicitudes (bandejas)</h2><div><span class="route">/requests</span></div><div class="meta">Protegida · Tabs de estados · Lista de hilos</div></div>
+  <div class="wf"><div class="wf-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span style="flex:1;text-align:center">/requests</span></div>
+    <div class="wf-body">
+      <div class="box lite"><span class="tag">Eyebrow: Solicitudes</span> <b>Mis solicitudes</b></div>
+      <div class="row" style="margin-top:6px">
+        <span class="chip">Activas (OPEN·IN_CONVERSATION)</span>
+        <span class="chip">No leídas</span>
+        <span class="chip">Completadas (COMPLETED)</span>
+        <span class="chip">Cerradas (CANCELLED/CLOSED_*)</span>
+      </div>
+      <div class="stack" style="margin-top:10px">
+        <div class="box">[Hilo] Badge de estado · Asunto · Proveedor · último mensaje · ícono chat</div>
+        <div class="box">[Hilo] …</div>
+        <div class="box">[Hilo] …</div>
+        <div class="box dashed">Vacío: «Todavía no tenés solicitudes — Buscá un proveedor y abrí una conversación…»</div>
+      </div>
+      <div class="note"><b>Notas:</b> desde la lista se entra al chat (`/requests/:id/chat`) o al detalle (`/requests/:id`). En el MVP el conteo de no leídas se apoya en hilos activos.</div>
+    </div>
+  </div>
+</section>
+<section class="screen" id="s9">
+  <div class="screen-head"><h2>9. Detalle de solicitud</h2><div><span class="route">/requests/:requestId</span></div><div class="meta">Protegida · Vista de resumen + timeline de acuerdo</div></div>
+  <div class="wf"><div class="wf-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span style="flex:1;text-align:center">/requests/:id</span></div>
+    <div class="wf-body">
+      <div class="box lite"><span class="tag">← Mis solicitudes</span></div>
+      <div class="row" style="margin-top:8px;align-items:center">
+        <div class="col"><span class="tag">Eyebrow: Detalle de solicitud</span><div style="font-size:16px"><b>{Asunto}</b></div><div class="box lite" style="margin-top:4px">{Proveedor} · Producto/Solicitud general · {Cotización o Ubicación por acordar}</div></div>
+        <div style="flex:0 0 auto"><span class="btn primary">Abrir conversación</span></div>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <div class="col g3 stack">
+          <div class="box">Necesidad compartida — texto de la solicitud + (si cotiza) precio y entrega</div>
+          <div class="box">Resumen de conversación — N mensajes · «Ver todos los mensajes»</div>
+          <div class="box dashed">Si COMPLETED → formulario de reseña (1–5 estrellas + comentario ≥10) «Publicar reseña»</div>
+        </div>
+        <div class="col g2 stack">
+          <div class="box">Estado del acuerdo (timeline: Solicitud enviada → Conversación iniciada → Cotización → Cliente confirmó → Proveedor confirmó)</div>
+          <div class="box dashed">Acciones: Confirmar como cliente · Confirmar como proveedor · Cerrar mi parte</div>
+          <div class="box lite">Participantes: Cliente · Proveedor</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="screen" id="s10">
+  <div class="screen-head"><h2>10. Chat + acuerdo (cotización · confirmación · reseña)</h2><div><span class="route">/requests/:requestId/chat</span></div><div class="meta">Protegida · La pantalla más rica del MVP · Modelo de 3 ejes</div></div>
+  <div class="wf"><div class="wf-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span style="flex:1;text-align:center">/requests/:id/chat</span></div>
+    <div class="wf-body">
+      <div class="box lite"><span class="tag">← Mis solicitudes</span> · buscador de hilos · Botón «Enviar/preparar cotización» (prov.)</div>
+      <div class="row" style="margin-top:10px">
+        <div class="col g4 stack">
+          <div class="box lite">[Banner según fase] <span class="tag">OPEN</span> negociando · <span class="tag">COMPLETION_PENDING</span> ⏰ «Esperando confirmación de la otra parte — Plazo: {fecha 72 h}» · <span class="tag">CLOSED</span> ✓ «Trabajo cerrado — {mensaje outcome}»</div>
+          <div class="box" style="min-height:220px">
+            <div class="box dashed" style="margin-bottom:6px;background:#f7f7f7">Mensaje del cliente (derecha/izq según autor)</div>
+            <div class="box dashed" style="margin-bottom:6px;background:#f7f7f7">Mensaje del proveedor</div>
+            <div class="box dashed" style="margin-bottom:6px;background:#f7f7f7;border-style:dashed">🧾 Mensaje de sistema: «📋 Cotización enviada: 💰 Precio … 📅 Entrega …»</div>
+            <div class="box dashed" style="background:#f7f7f7">✅ Mensaje de sistema: «El cliente aceptó la cotización: …»</div>
+          </div>
+          <div class="box lite">Input: «Escribe tu respuesta comercial…» + Enviar (Enter) + nota (Enter enviar · Shift+Enter nueva línea) · adjunto deshabilitado MVP</div>
+        </div>
+        <div class="col g2 stack">
+          <div class="box">Solicitud vinculada — asunto + descripción + Proveedor + Estado + Cotización + Entrega<br><span class="btn" style="margin-top:6px">👍 De acuerdo con este precio (cliente, si hay cotización)</span><br><span class="tag">Enlace: Ver detalle completo</span></div>
+          <div class="box">Próxima acción (según fase y rol)</div>
+          <div class="box">Confirmación bilateral — [cliente ✓][proveedor ✓] + botones «Confirmar como cliente» / «Confirmar como proveedor» / «Cerrar mi parte»</div>
+          <div class="box lite">· Reportar conversación (modal con motivo) · respuestas rápidas por rol</div>
+        </div>
+      </div>
+      <div class="note"><b>Notas (3 ejes):</b> al enviar cotización se registra mensaje de sistema; la aceptación usa el endpoint accept-quotation y la confirmación bilateral `complete` (rol REQUESTER/PROVIDER). Si una parte se vence (72 h) el cron cierra unilateralmente. La reseña solo se desbloquea con cierre BILATERAL.</div>
+    </div>
+  </div>
+</section>
+<section class="screen" id="s11">
+  <div class="screen-head"><h2>11. Mi perfil — panel PROVEEDOR</h2><div><span class="route">/me</span></div><div class="meta">Protegida · Variante con negocio registrado</div></div>
+  <div class="wf"><div class="wf-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span style="flex:1;text-align:center">/me</span></div>
+    <div class="wf-body">
+      <div class="box lite">Header: eyebrow «Centro de negocio» · H1 «Mi perfil» · acciones [Ver perfil público] [Editar perfil público]</div>
+      <div class="box">Resumen de cuenta — monograma · nombre · email · badges: Proveedor y solicitante · Teléfono pendiente · Email verificado</div>
+      <div class="row" style="margin-top:10px">
+        <div class="col g3 stack">
+          <div class="box">Previsualización del perfil: imagen + nombre + descripción + badges (confianza, verificación, señal)</div>
+          <div class="box">Fortaleza del perfil — barra N% · checklist 8 puntos (nombre, ciudad, categoría, descripción ≥40, catálogo activo, imagen, precio, disponibilidad)</div>
+          <div class="box">Productos y servicios — métricas: Activos / Inactivos / Más consultado + [Administrar] [Agregar oferta]</div>
+          <div class="box">Conversaciones y solicitudes — Activas / Completadas / Total + recientes + [Ver conversaciones]</div>
+          <div class="box dashed">Importar y exportar no disponible para el MVP</div>
+        </div>
+        <div class="col g2 stack">
+          <div class="box">Confianza y medallas — score /100 + medallas + bloqueadas + «Entender mi puntaje»</div>
+          <div class="box">Calidad del perfil — % completo + [Mejorar perfil público]</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="screen" id="s12">
+  <div class="screen-head"><h2>12. Mi perfil — panel SOLICITANTE (sin negocio)</h2><div><span class="route">/me</span></div><div class="meta">Protegida · Variante sin perfil proveedor</div></div>
+  <div class="wf"><div class="wf-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span style="flex:1;text-align:center">/me</span></div>
+    <div class="wf-body">
+      <div class="box lite">Header: eyebrow «Mi cuenta» · H1 «Panel de solicitante»</div>
+      <div class="box">Resumen de cuenta — monograma · nombre · email · badge «Solicitante»</div>
+      <div class="row" style="margin-top:10px">
+        <div class="col g3 stack">
+          <div class="box">Actividad como solicitante — Activas / Completadas / Total + recientes + [Buscar proveedores] [Ver todas mis solicitudes]</div>
+          <div class="box">Panel de upgrade: «También podés vender — Creá un perfil proveedor cuando estés listo» + [Crear perfil proveedor → /me/profile/edit]</div>
+        </div>
+        <div class="col g2 stack">
+          <div class="box">Estado de cuenta — checklist de verificación (email / teléfono / datos)</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+<section class="screen" id="s13">
+  <div class="screen-head"><h2>13. Editar perfil público</h2><div><span class="route">/me/profile/edit</span></div><div class="meta">Protegida · Formulario + panel de publicación (DRAFT → ACTIVE)</div></div>
+  <div class="wf"><div class="wf-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span style="flex:1;text-align:center">/me/profile/edit</span></div>
+    <div class="wf-body">
+      <div class="box lite"><span class="tag">← Mi perfil</span> · Header: Identidad pública · «Esta información explica quién sos…»</div>
+      <div class="row" style="margin-top:8px">
+        <div class="col g3 stack">
+          <div class="box lite"><span class="tag">Nombre público o comercial *</span><span class="inp">…</span></div>
+          <div class="box lite"><span class="tag">Frase corta *</span><span class="inp">Ej. Empaques responsables para marcas locales</span></div>
+          <div class="grid2">
+            <div class="box lite"><span class="tag">Ciudad</span><span class="inp">…</span></div>
+            <div class="box lite"><span class="tag">Categoría principal *</span><span class="inp">Elegí categoría</span></div>
+            <div class="box lite"><span class="tag">Área de servicio</span><span class="inp">…</span></div>
+            <div class="box lite"><span class="tag">Rango general</span><span class="inp">Sin definir …</span></div>
+            <div class="box lite"><span class="tag">Disponibilidad</span><span class="inp">Disponible / Ocupado / Bajo pedido / No disponible</span></div>
+            <div class="box lite"><span class="tag">Respuesta estimada (horas)</span><span class="inp">1</span></div>
+          </div>
+          <div class="box lite"><span class="tag">Contacto preferido</span><span class="inp">Mensajes de la plataforma (único MVP)</span></div>
+          <div class="box lite"><span class="tag">Descripción * (≥40)</span><span class="inp">N/40 mínimo</span></div>
+          <div class="box lite"><span class="tag">URL de avatar</span><span class="inp">…</span> <span class="tag">URL de portada</span><span class="inp">…</span></div>
+          <div class="box lite">[Guardar perfil público]</div>
+        </div>
+        <div class="col g2 stack">
+          <div class="box dashed">Panel «Publicar perfil» (si DRAFT): requisitos — frase ≥10 ✓ · descripción ≥40 ✓ · ≥1 catálogo activo ✓ → [Publicar perfil]</div>
+        </div>
+      </div>
+      <div class="note"><b>Notas:</b> si no hay negocio registrado, esta ruta crea el perfil proveedor. SUNSPENDED/BANNED bloquea guardar/publicar.</div>
+    </div>
+  </div>
+</section>
+
+<section class="screen" id="s14">
+  <div class="screen-head"><h2>14. Administrar catálogo (productos y servicios)</h2><div><span class="route">/me/products</span></div><div class="meta">Protegida · Proveedor · Filtros + toggle + archivar</div></div>
+  <div class="wf"><div class="wf-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span style="flex:1;text-align:center">/me/products</span></div>
+    <div class="wf-body">
+      <div class="box lite"><span class="tag">← Mi perfil</span> · Header: Catálogo · [Agregar oferta]</div>
+      <div class="row" style="margin-top:6px;flex-wrap:wrap">
+        <span class="chip">Todos</span> <span class="chip">Activos</span> <span class="chip">Inactivos</span> <span class="chip">Producto</span> <span class="chip">Servicio</span> <span class="chip">Equipo</span> <span class="chip">Alquiler</span> <span class="chip">Reparación</span> <span class="chip">Capacitación</span> <span class="chip">Insumo</span> <span class="chip">Materia prima</span>
+      </div>
+      <div class="stack" style="margin-top:10px">
+        <div class="box">[Oferta] Título · tipo · precio C$ · [toggle Activo/Inactivo] [Archivar] [Editar]</div>
+        <div class="box">[Oferta] …</div>
+        <div class="box">[Oferta] …</div>
+      </div>
+      <div class="box dashed" style="margin-top:8px">Editor de oferta (`/me/products/new` y `/me/products/:id/edit`): título, tipo (8), categoría, descripción, precio C$ mín/máx, entrega/unidad, disponibilidad, ciudad de cobertura, imágenes</div>
+      <div class="note"><b>Notas:</b> catálogo bloqueado si proveedor SUSPENDED/BANNED/INACTIVE (banner explicativo).</div>
+    </div>
+  </div>
+</section>
+<section class="screen" id="s15">
+  <div class="screen-head"><h2>15. Cómo funciona la confianza</h2><div><span class="route">/trust</span></div><div class="meta">Pública · Explicador de reglas</div></div>
+  <div class="wf"><div class="wf-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span style="flex:1;text-align:center">/trust</span></div>
+    <div class="wf-body">
+      <div class="box lite"><span class="tag">Eyebrow: Reglas transparentes</span><br><b>La confianza no es solo una estrella</b><br>Identidad y reputación se muestran por separado para reducir la inflación del puntaje.</div>
+      <div class="grid3" style="margin-top:10px">
+        <div class="box">° Verificación — responde quién es la cuenta (correo → teléfono → perfil completo)</div>
+        <div class="box">° Reputación — responde qué ha demostrado (solo actividad completada bilateral + reseñas vinculadas)</div>
+        <div class="box">° Antigüedad — cuentas nuevas pesan menos; nadie llega a confianza alta de un día para otro</div>
+      </div>
+      <div class="box" style="margin-top:10px">Medallas y reglas — lista de regla → explicación</div>
+      <div class="box">Protecciones del MVP — lista ✓ (una solicitud solo se completa con doble confirmación; reseña única por solicitud; aportes con límites; reportes van a revisión humana)</div>
+    </div>
+  </div>
+</section>
+
+<section class="screen" id="s16">
+  <div class="screen-head"><h2>16. Seguridad de la cuenta</h2><div><span class="route">/settings/security</span></div><div class="meta">Protegida · Listado de ajustes · Acceso desde menú de cuenta</div></div>
+  <div class="wf"><div class="wf-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span style="flex:1;text-align:center">/settings/security</span></div>
+    <div class="wf-body">
+      <div class="box lite"><span class="tag">Eyebrow: Configuración</span> <b>Seguridad de la cuenta</b><br>Información clara sobre la sesión y las protecciones disponibles.</div>
+      <div class="stack" style="margin-top:10px">
+        <div class="box">Teléfono — +505 8••• ••42 · [Verificado]</div>
+        <div class="box">Rol y permisos — Proveedor · Administrador de demostración · [Acceso controlado]</div>
+        <div class="box">Sesión actual — Este dispositivo · Managua · vence tras 30 min de inactividad · [Cerrar otras sesiones]</div>
+        <div class="box dashed">2FA no disponible para el MVP</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer style="margin-top:48px;border-top:2px solid #888;padding-top:12px;font-size:12px;color:#555">
+  <b>Fin de los wireframes (16 pantallas · versión base).</b> Revisar <code>03-especificacion/pantallas.md</code> para la especificación detallada y <code>03-especificacion/checklist-de-validacion.md</code> para el recorrido de validación.
+</footer>
+</div>
+</body>
+</html>

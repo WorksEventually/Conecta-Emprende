@@ -1,0 +1,1091 @@
+﻿<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>TradeArc Â· Diagrama relacional de la base de datos (3FN)</title>
+<style>
+  :root{
+    --bg:#0f1115; --panel:#171a21; --line:#262b36; --txt:#e7eaf0;
+    --muted:#9aa3b2; --accent:#2f9e73; --accent2:#3b82f6;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--txt);
+    font:15px/1.55 "Segoe UI",system-ui,-apple-system,sans-serif}
+  header{padding:22px 28px 16px;border-bottom:1px solid var(--line)}
+  h1{margin:0 0 4px;font-size:21px;font-weight:650}
+  .sub{color:var(--muted);font-size:13.5px}
+  .sub code{background:#1d2129;padding:1px 6px;border-radius:4px;font-size:12.5px}
+  nav{display:flex;flex-wrap:wrap;gap:8px;padding:16px 28px;border-bottom:1px solid var(--line);
+    position:sticky;top:0;background:var(--bg);z-index:10}
+  button{font:inherit;font-size:13.5px;cursor:pointer;border-radius:7px;
+    border:1px solid var(--line);background:var(--panel);color:var(--txt);padding:7px 13px}
+  button:hover{border-color:#3a4150}
+  button.tab.active{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+  .tools{margin-left:auto;display:flex;gap:8px}
+  .tools button{border-color:#2b3444}
+  main{padding:20px 28px 60px}
+  .meta{color:var(--muted);font-size:13px;margin:0 0 14px;max-width:110ch}
+  .meta b{color:var(--txt);font-weight:600}
+  #stage{background:#fbfcfd;border:1px solid var(--line);border-radius:10px;
+    padding:18px;overflow:auto;min-height:60vh}
+  #stage svg{max-width:none;height:auto}
+  .legend{display:flex;flex-wrap:wrap;gap:18px;margin:16px 0 0;padding:14px 16px;
+    background:var(--panel);border:1px solid var(--line);border-radius:10px;font-size:13px}
+  .legend div{color:var(--muted)}
+  .legend code{color:var(--txt);background:#1d2129;padding:1px 6px;border-radius:4px}
+  .err{background:#2a1618;border:1px solid #5b2a2f;color:#ffb4b4;
+    padding:14px;border-radius:8px;white-space:pre-wrap;font-family:Consolas,monospace;font-size:13px}
+  .zoom{display:inline-flex;align-items:center;gap:6px;color:var(--muted);font-size:13px}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>TradeArc Â· Diagrama relacional de la base de datos</h1>
+  <div class="sub">
+    Modelo normalizado en 3FN Â· PostgreSQL 15 Â· 40 tablas, 10 enums Â·
+    derivado de <code>prisma/schema.prisma</code>
+  </div>
+</header>
+
+<nav>
+  <button class="tab active" data-d="global">Vista global</button>
+  <button class="tab" data-d="a">A Â· Identidad y acceso</button>
+  <button class="tab" data-d="b">B Â· UbicaciÃ³n y categorÃ­as</button>
+  <button class="tab" data-d="c">C Â· Proveedor</button>
+  <button class="tab" data-d="d">D Â· CatÃ¡logo</button>
+  <button class="tab" data-d="e">E Â· Solicitudes y eventos</button>
+  <button class="tab" data-d="f">F Â· Confianza y moderaciÃ³n</button>
+  <div class="tools">
+    <span class="zoom">
+      <button id="out" title="Reducir">&minus;</button>
+      <span id="lvl">100%</span>
+      <button id="in" title="Ampliar">+</button>
+    </span>
+    <button id="svg">Descargar SVG</button>
+    <button id="png">Descargar PNG</button>
+  </div>
+</nav>
+
+<main>
+  <p class="meta" id="meta"></p>
+  <div id="stage">Renderizandoâ€¦</div>
+  <div class="legend">
+    <div><code>PK</code> clave primaria</div>
+    <div><code>FK</code> clave forÃ¡nea</div>
+    <div><code>UK</code> restricciÃ³n Ãºnica</div>
+    <div><code>||--o{</code> uno a muchos</div>
+    <div><code>|o--o{</code> cero-o-uno a muchos</div>
+    <div><code>||--o|</code> uno a cero-o-uno (1:1 opcional)</div>
+    <div><code>LEGACY</code> columna de transiciÃ³n, ver doc 06</div>
+    <div><code>DERIVADO</code> valor calculado o cacheado</div>
+  </div>
+</main>
+
+<!-- ============ FUENTES DE LOS DIAGRAMAS ============ -->
+
+<script type="text/plain" id="src-global">
+erDiagram
+    User ||--o{ RoleAssignment : "acumula"
+    User ||--o{ Account : "vincula"
+    User ||--o{ Session : "abre"
+    User ||--o{ RefreshToken : "rota"
+    User ||--o{ EmailVerificationToken : "verifica con"
+    User ||--o{ PasswordResetToken : "restablece con"
+    User ||--o{ Provider : "es dueÃ±o de"
+    User ||--o{ QuoteThread : "solicita como cliente"
+    User ||--o{ Review : "redacta"
+    User |o--o{ ModerationAuditLog : "actua en"
+    User ||--o{ ModerationActionApproval : "solicita accion"
+    User |o--o{ ModerationActionApproval : "aprueba accion"
+    User |o--o{ RequestEvent : "origina"
+    User |o--o{ RiskReport : "revisa o escala o resuelve"
+    User |o--o{ ReputationEvent : "invalida"
+    User ||--o{ ProviderPrivateFeedback : "escribe"
+    User ||--o{ ProviderPrivateFeedbackHistory : "versiona"
+    User |o--o{ Provider : "cambia estado de"
+
+    Department ||--o{ City : "agrupa"
+    City |o--o{ Provider : "localiza"
+    City |o--o{ CatalogItem : "localiza"
+    Category |o--o{ Category : "es padre de"
+    Category ||--o{ ProviderCategory : "clasifica"
+    Category ||--o{ CatalogItemCategory : "clasifica"
+
+    Provider ||--o{ ProviderCategory : "se clasifica en"
+    Provider ||--o| TrustScore : "tiene score v1"
+    Provider ||--o| ProviderMetrics : "tiene metricas"
+    Provider ||--o| FormalizationChecklist : "tiene checklist"
+    Provider ||--o{ FormalizationStep : "avanza en"
+    Provider ||--o{ ProviderBusinessHour : "atiende en"
+    Provider ||--o{ ProviderDeliveryOption : "entrega con"
+    Provider ||--o{ ProviderPhoto : "muestra"
+    Provider ||--o{ ProviderMedal : "gana"
+    Provider ||--o{ CatalogItem : "publica"
+    Provider ||--o{ QuoteThread : "recibe"
+    Provider ||--o{ Review : "es reseÃ±ado en"
+    Provider ||--o{ TrustScoreSnapshot : "historiza"
+    Provider ||--o{ RiskReport : "es analizado en"
+    Provider ||--o{ ReputationEvent : "acumula evidencia"
+    Provider ||--o{ ProviderPrivateFeedback : "recibe privado"
+    Provider ||--o{ RiskSignalEvidence : "acumula seÃ±ales"
+    RiskReport |o--o{ RiskSignalEvidence : "respalda"
+    RiskReport |o--o{ ModerationActionApproval : "motiva"
+
+    CatalogItem ||--o| EquipmentDetail : "detalla si es equipo"
+    CatalogItem ||--o| CatalogItemMetrics : "tiene metricas"
+    CatalogItem ||--o{ CatalogItemPhoto : "ilustra con"
+    CatalogItem ||--o{ CatalogItemCategory : "se clasifica en"
+
+    QuoteThread ||--o{ QuoteMessage : "contiene"
+    QuoteThread ||--o{ QuoteOffer : "negocia"
+    QuoteThread ||--o{ Review : "habilita"
+    QuoteThread ||--o{ RequestEvent : "registra"
+    QuoteThread |o--o{ ReputationEvent : "genera"
+    QuoteThread ||--o| ProviderPrivateFeedback : "cierra con"
+
+    Review ||--o| ReviewAnalysis : "se analiza en"
+    Review ||--o{ ReviewHistory : "versiona en"
+    RequestEvent |o--o{ ReputationEvent : "es origen de"
+    ProviderPrivateFeedback ||--o{ ProviderPrivateFeedbackHistory : "versiona en"
+
+    User {
+        cuid id PK
+        string email UK
+        enum role
+    }
+    RoleAssignment {
+        cuid id PK
+        cuid userId FK
+        string role UK
+    }
+    Account {
+        cuid id PK
+        cuid userId FK
+        string provider UK
+        string providerAccountId UK
+    }
+    Session {
+        cuid id PK
+        cuid userId FK
+        string sessionToken UK
+    }
+    RefreshToken {
+        cuid id PK
+        cuid userId FK
+        string token UK
+    }
+    EmailVerificationToken {
+        cuid id PK
+        cuid userId FK
+        string token UK
+    }
+    PasswordResetToken {
+        cuid id PK
+        cuid userId FK
+        string token UK
+    }
+    Department {
+        cuid id PK
+        string name UK
+        string slug UK
+    }
+    City {
+        cuid id PK
+        cuid departmentId FK
+        string name UK
+        string slug UK
+        enum legacyCode UK
+    }
+    Category {
+        cuid id PK
+        string slug UK
+        cuid parentCategoryId FK
+    }
+    Provider {
+        cuid id PK
+        cuid userId FK
+        string slug UK
+        cuid cityId FK
+        cuid statusUpdatedById FK
+        enum status
+    }
+    ProviderCategory {
+        cuid providerId PK
+        cuid categoryId PK
+        boolean isPrimary
+    }
+    ProviderBusinessHour {
+        cuid id PK
+        cuid providerId FK
+        int dayOfWeek UK
+    }
+    ProviderDeliveryOption {
+        cuid id PK
+        cuid providerId FK
+        string label UK
+    }
+    ProviderPhoto {
+        cuid id PK
+        cuid providerId FK
+        string catalogItemId
+    }
+    ProviderMedal {
+        cuid id PK
+        cuid providerId FK
+        string medalType
+    }
+    TrustScore {
+        cuid id PK
+        cuid providerId FK
+        float finalScore
+    }
+    ProviderMetrics {
+        cuid id PK
+        cuid providerId FK
+        float trustScore
+        float publicTrustScore
+    }
+    FormalizationChecklist {
+        cuid id PK
+        cuid providerId FK
+        json steps
+    }
+    FormalizationStep {
+        cuid id PK
+        cuid providerId FK
+        string code UK
+    }
+    CatalogItem {
+        cuid id PK
+        cuid providerId FK
+        cuid cityId FK
+        string itemType
+    }
+    CatalogItemCategory {
+        cuid catalogItemId PK
+        cuid categoryId PK
+        boolean isPrimary
+    }
+    CatalogItemMetrics {
+        cuid id PK
+        cuid catalogItemId FK
+    }
+    EquipmentDetail {
+        cuid id PK
+        cuid catalogItemId FK
+        string modality
+    }
+    CatalogItemPhoto {
+        cuid id PK
+        cuid catalogItemId FK
+    }
+    QuoteThread {
+        cuid id PK
+        cuid senderId FK
+        cuid providerId FK
+        string catalogItemId
+        enum workflow_phase
+        enum closure_outcome
+        enum moderation_state
+        int version
+    }
+    QuoteMessage {
+        cuid id PK
+        cuid threadId FK
+        string authorId
+        string authorRole
+    }
+    QuoteOffer {
+        cuid id PK
+        cuid requestId FK
+        string providerId
+        string status
+    }
+    RequestEvent {
+        cuid id PK
+        cuid requestId FK
+        cuid actorUserId FK
+        enum eventType
+        string idempotencyKey UK
+    }
+    ReputationEvent {
+        cuid id PK
+        cuid providerId FK
+        cuid requestId FK
+        cuid sourceEventId FK
+        cuid invalidatedByAdminId FK
+        enum evidenceType UK
+        float evidenceWeight
+    }
+    ProviderPrivateFeedback {
+        cuid id PK
+        cuid requestId FK
+        cuid providerId FK
+        cuid authorId FK
+    }
+    ProviderPrivateFeedbackHistory {
+        cuid id PK
+        cuid feedbackId FK
+        cuid authorId FK
+    }
+    Review {
+        cuid id PK
+        cuid providerId FK
+        cuid reviewerId FK
+        cuid requestId FK
+        float generalScore
+        float weight
+    }
+    ReviewHistory {
+        cuid id PK
+        cuid reviewId FK
+        string editedByUserId
+    }
+    ReviewAnalysis {
+        cuid id PK
+        cuid reviewId FK
+    }
+    TrustScoreSnapshot {
+        cuid id PK
+        cuid providerId FK
+        float finalScore
+    }
+    RiskReport {
+        cuid id PK
+        cuid providerId FK
+        cuid reviewedByUserId FK
+        cuid escalatedByUserId FK
+        cuid resolvedByUserId FK
+        float riskScore
+    }
+    ModerationAuditLog {
+        cuid id PK
+        cuid actorUserId FK
+        string targetType
+        string targetId
+    }
+    RiskSignalEvidence {
+        cuid id PK
+        cuid providerId FK
+        cuid riskReportId FK
+        string signalKey
+        float contribution
+        string algorithmVersion
+    }
+    ModerationActionApproval {
+        cuid id PK
+        cuid riskReportId FK
+        cuid requestedByUserId FK
+        cuid approvedByUserId FK
+        string action
+        string status
+    }
+</script>
+
+<script type="text/plain" id="src-a">
+erDiagram
+    User ||--o{ RoleAssignment : "acumula roles"
+    User ||--o{ Account : "vincula proveedor OAuth"
+    User ||--o{ Session : "abre sesion"
+    User ||--o{ RefreshToken : "rota token"
+    User ||--o{ EmailVerificationToken : "verifica correo"
+    User ||--o{ PasswordResetToken : "restablece clave"
+
+    User {
+        cuid id PK "cuid de 25 caracteres"
+        string email UK "identidad de login, unico"
+        string name "opcional"
+        string image "opcional, avatar"
+        enum role "Role, default USER"
+        string password "hash bcrypt, nulo en cuentas OAuth"
+        datetime emailVerified "nulo si no verifico"
+        boolean isSynthetic "default false, cuenta de prueba"
+        boolean collusionConfirmed "default false, colusion confirmada"
+        datetime createdAt "insumo de antiguedad de cuenta"
+        datetime updatedAt
+    }
+    RoleAssignment {
+        cuid id PK
+        cuid userId FK "cascade"
+        string role UK "unico junto a userId"
+        datetime createdAt
+        datetime updatedAt
+    }
+    Account {
+        cuid id PK
+        cuid userId FK "cascade"
+        string provider UK "google, unico con providerAccountId"
+        string providerAccountId UK
+        text refresh_token "opcional"
+        text access_token "opcional"
+        int expires_at "opcional"
+        string token_type "opcional"
+        string scope "opcional"
+        text id_token "opcional"
+        string session_state "opcional"
+    }
+    Session {
+        cuid id PK
+        cuid userId FK "cascade"
+        string sessionToken UK
+        datetime expires
+        datetime createdAt
+    }
+    RefreshToken {
+        cuid id PK
+        cuid userId FK "cascade"
+        string token UK
+        datetime expiresAt
+        datetime createdAt
+    }
+    EmailVerificationToken {
+        cuid id PK
+        cuid userId FK "cascade"
+        string token UK
+        datetime expiresAt
+    }
+    PasswordResetToken {
+        cuid id PK
+        cuid userId FK "cascade"
+        string token UK
+        datetime expiresAt
+    }
+</script>
+
+<script type="text/plain" id="src-b">
+erDiagram
+    Department ||--o{ City : "contiene"
+    City |o--o{ Provider : "ubica"
+    City |o--o{ CatalogItem : "ubica"
+    Category |o--o{ Category : "jerarquia padre e hijo"
+    Category ||--o{ ProviderCategory : "clasifica proveedor"
+    Category ||--o{ CatalogItemCategory : "clasifica item"
+    Provider ||--o{ ProviderCategory : "tiene"
+    CatalogItem ||--o{ CatalogItemCategory : "tiene"
+
+    Department {
+        cuid id PK
+        string name UK "unico"
+        string slug UK "unico, para URL"
+        datetime createdAt
+        datetime updatedAt
+    }
+    City {
+        cuid id PK
+        cuid departmentId FK "cascade"
+        string name UK "unico junto a departmentId"
+        string slug UK "unico global"
+        enum legacyCode UK "LegacyCity, puente de migracion"
+        datetime createdAt
+        datetime updatedAt
+    }
+    Category {
+        cuid id PK
+        string name
+        string slug UK "unico"
+        cuid parentCategoryId FK "auto referencia, nulo en raiz"
+        datetime createdAt
+        datetime updatedAt
+    }
+    ProviderCategory {
+        cuid providerId PK "parte de clave compuesta"
+        cuid categoryId PK "parte de clave compuesta"
+        boolean isPrimary "default false, categoria principal"
+        datetime createdAt
+    }
+    CatalogItemCategory {
+        cuid catalogItemId PK "parte de clave compuesta"
+        cuid categoryId PK "parte de clave compuesta"
+        boolean isPrimary "default false"
+        datetime createdAt
+    }
+    Provider {
+        cuid id PK
+        cuid cityId FK
+    }
+    CatalogItem {
+        cuid id PK
+        cuid cityId FK
+    }
+</script>
+
+<script type="text/plain" id="src-c">
+erDiagram
+    User ||--o{ Provider : "posee, cascade"
+    User |o--o{ Provider : "actualizo estado, set null"
+    Provider ||--o| TrustScore : "score v1, uno a uno"
+    Provider ||--o| ProviderMetrics : "read model, uno a uno"
+    Provider ||--o{ ProviderBusinessHour : "horario por dia"
+    Provider ||--o{ ProviderDeliveryOption : "opciones de entrega"
+    Provider ||--o{ ProviderPhoto : "galeria"
+    Provider ||--o{ ProviderMedal : "medallas"
+    Provider ||--o| FormalizationChecklist : "checklist, uno a uno"
+    Provider ||--o{ FormalizationStep : "pasos roadmap"
+
+    Provider {
+        cuid id PK
+        cuid userId FK "cascade, dueÃ±o"
+        string displayName
+        string slug UK "unico, URL publica"
+        text bio "opcional"
+        string logoUrl "opcional"
+        string coverImageUrl "opcional"
+        cuid cityId FK "set null, normalizado"
+        enum city "LEGACY LegacyCity"
+        string department "LEGACY derivado de City y Department"
+        string serviceRadius "opcional"
+        string category "LEGACY texto"
+        string mainCategory "LEGACY texto"
+        string_array subcategories "LEGACY arreglo, viola 1FN"
+        int priceMin "opcional"
+        int priceMax "opcional"
+        string priceRange "DERIVADO de priceMin y priceMax"
+        string businessHours "LEGACY texto compuesto"
+        string_array deliveryOptions "LEGACY arreglo, viola 1FN"
+        enum availability "default DISPONIBLE"
+        enum status "ProviderStatus, default DRAFT"
+        text statusReason "opcional, motivo de moderacion"
+        datetime suspendedUntil "opcional"
+        datetime statusUpdatedAt "opcional"
+        cuid statusUpdatedById FK "set null, admin que actuo"
+        boolean verified "default false"
+        string verificationLevel "opcional, etiqueta"
+        enum formalizationStatus "default INFORMAL"
+        float profileCompleteness "DERIVADO, cache de ProviderMetrics"
+        float responseTimeHrs "DERIVADO, cache de ProviderMetrics"
+        int completedRequests "DERIVADO, cache de ProviderMetrics"
+        float lat "opcional, Leaflet"
+        float lng "opcional, Leaflet"
+        varchar shortDescription "max 200, requerido para publicar"
+        text aboutDescription "requerido para publicar"
+        datetime createdAt
+        datetime activatedAt "opcional, fecha de publicacion"
+        datetime updatedAt
+    }
+    ProviderBusinessHour {
+        cuid id PK
+        cuid providerId FK "cascade"
+        int dayOfWeek UK "0 a 6, unico junto a providerId"
+        string opensAt "opcional"
+        string closesAt "opcional"
+        boolean isClosed "default false"
+        string note "opcional"
+    }
+    ProviderDeliveryOption {
+        cuid id PK
+        cuid providerId FK "cascade"
+        string label UK "unico junto a providerId"
+        string details "opcional"
+        datetime createdAt
+    }
+    ProviderPhoto {
+        cuid id PK
+        cuid providerId FK "cascade"
+        string catalogItemId "SIN FK declarada"
+        string imageUrl
+        string caption "opcional"
+        string photoType "PRODUCTO, TALLER_O_LOCAL, PORTAFOLIO y mas"
+        boolean isFeatured "default false"
+        datetime createdAt
+    }
+    ProviderMedal {
+        cuid id PK
+        cuid providerId FK "cascade"
+        string medalType "7 tipos"
+        datetime earnedAt
+        string sourceEvent "evento que la otorgo"
+    }
+    TrustScore {
+        cuid id PK
+        cuid providerId FK "unico, uno a uno"
+        float scoreCompleteness
+        float scoreTransactions
+        float scoreResponseTime
+        float scoreReviews
+        float scoreFormalization
+        float finalScore
+        string algorithmVersion "default v1-rule-based"
+        json features "opcional"
+        datetime computedAt
+    }
+    ProviderMetrics {
+        cuid id PK
+        cuid providerId FK "unico, cascade, uno a uno"
+        float avgRating "opcional"
+        int totalVerifiedReviews "default 0"
+        float profileCompleteness "default 0"
+        float responseTimeHrs "opcional"
+        int completedRequests "default 0"
+        int requestsResponded "default 0"
+        float suspiciousActivityPenalty "default 0"
+        float trustScore "interno, nunca se expone"
+        float publicTrustScore "opcional, el unico publicable"
+        string evidenceLevel "default INSUFFICIENT_EVIDENCE"
+        boolean publicScoreFrozen "default false"
+        boolean growthHold "default false, freno por riesgo"
+        string algorithmVersion "default trust-v2.0.0"
+        int bilateralCompletions "default 0"
+        int uniqueRequesters "default 0"
+        datetime lastRecalculatedAt "opcional"
+        datetime calculatedAt
+        datetime updatedAt
+    }
+    FormalizationChecklist {
+        cuid id PK
+        cuid providerId FK "unico, cascade, uno a uno"
+        json steps "LEGACY arreglo JSON, viola 1FN"
+        datetime updatedAt
+    }
+    FormalizationStep {
+        cuid id PK
+        cuid providerId FK "cascade, nulo si es plantilla"
+        string code UK "unico junto a providerId"
+        string title
+        text description "opcional"
+        int sortOrder "default 0"
+        boolean isRequired "default false"
+        string status "default ROADMAP"
+        datetime createdAt
+        datetime updatedAt
+    }
+</script>
+
+<script type="text/plain" id="src-d">
+erDiagram
+    Provider ||--o{ CatalogItem : "publica, cascade"
+    CatalogItem ||--o| EquipmentDetail : "uno a uno si es equipo"
+    CatalogItem ||--o| CatalogItemMetrics : "uno a uno read model"
+    CatalogItem ||--o{ CatalogItemPhoto : "galeria"
+    CatalogItem ||--o{ CatalogItemCategory : "clasificacion M a N"
+    City |o--o{ CatalogItem : "ubica, set null"
+
+    CatalogItem {
+        cuid id PK
+        cuid providerId FK "cascade"
+        string title
+        string itemType "8 tipos, PRODUCTO_FINAL, ALQUILER_EQUIPO y mas"
+        string category "LEGACY texto"
+        string subcategory "LEGACY texto"
+        text description
+        int priceMin "opcional"
+        int priceMax "opcional"
+        string currency "default NIO"
+        string priceUnit "opcional, unidad o dia o proyecto"
+        string city "LEGACY texto"
+        cuid cityId FK "set null, normalizado"
+        enum availabilityStatus "default DISPONIBLE"
+        boolean deliveryAvailable "default false"
+        boolean pickupAvailable "default false"
+        string mainImageUrl "opcional"
+        int viewCount "DERIVADO, cache de CatalogItemMetrics"
+        int inquiryCount "DERIVADO, cache de CatalogItemMetrics"
+        datetime createdAt
+        datetime updatedAt
+    }
+    EquipmentDetail {
+        cuid id PK
+        cuid catalogItemId FK "unico, cascade"
+        string modality "VENTA, ALQUILER, REPARACION y mas"
+        string brand "opcional"
+        string model "opcional"
+        string condition "opcional"
+        string capacity "opcional"
+        boolean requiresTraining "default false"
+        boolean includesInstallation "default false"
+        boolean maintenanceAvailable "default true"
+    }
+    CatalogItemMetrics {
+        cuid id PK
+        cuid catalogItemId FK "unico, cascade"
+        int viewCount "default 0"
+        int inquiryCount "default 0"
+        int requestCount "default 0"
+        datetime calculatedAt
+        datetime updatedAt
+    }
+    CatalogItemPhoto {
+        cuid id PK
+        cuid catalogItemId FK "cascade"
+        string imageUrl
+        string caption "opcional"
+        boolean isFeatured "default false"
+        datetime createdAt
+    }
+    CatalogItemCategory {
+        cuid catalogItemId PK "parte de clave compuesta"
+        cuid categoryId PK "parte de clave compuesta"
+        boolean isPrimary "default false"
+        datetime createdAt
+    }
+</script>
+
+<script type="text/plain" id="src-e">
+erDiagram
+    User ||--o{ QuoteThread : "crea como cliente"
+    Provider ||--o{ QuoteThread : "recibe"
+    QuoteThread ||--o{ QuoteMessage : "contiene, cascade"
+    QuoteThread ||--o{ QuoteOffer : "acumula ofertas, cascade"
+    QuoteThread ||--o{ RequestEvent : "registra eventos, cascade"
+    QuoteThread ||--o| ProviderPrivateFeedback : "uno a uno nota privada"
+    ProviderPrivateFeedback ||--o{ ProviderPrivateFeedbackHistory : "versiona"
+    User ||--o{ ProviderPrivateFeedback : "autor"
+    Provider ||--o{ ProviderPrivateFeedback : "destinatario"
+    User |o--o{ RequestEvent : "actor, set null"
+
+    QuoteThread {
+        cuid id PK
+        cuid senderId FK "cliente solicitante, restrict"
+        cuid providerId FK "proveedor destinatario, restrict"
+        string catalogItemId "opcional, SIN FK declarada"
+        string subject
+        string clientName "DERIVADO de User name"
+        string clientAvatar "DERIVADO de User image"
+        string dateLabel "DERIVADO de createdAt"
+        string status "LEGACY DEPRECADO, derivado de los ejes 1 y 2"
+        enum workflow_phase "EJE 1, default OPEN"
+        enum closure_outcome "EJE 2, nulo hasta CLOSED"
+        enum moderation_state "EJE 3, default CLEAN"
+        datetime completionDeadline "opcional, ventana de 72 horas"
+        string quotedPriceLabel "opcional, ultima cotizacion"
+        string quotedDeliveryTime "opcional"
+        json quotationHistory "arreglo append only, viola 1FN"
+        json acceptedQuotation "objeto de aceptacion, viola 1FN"
+        datetime confirmedByRequesterAt "opcional"
+        datetime confirmedByProviderAt "opcional"
+        datetime completedAt "opcional"
+        int version "default 1, bloqueo optimista"
+        int cycleNo "default 0, ciclo de cierre"
+        cuid completionInitiatorUserId "quien pidio el cierre"
+        datetime completionRejectedAt "opcional, cooldown de 24 horas"
+        cuid completionRejectedByUserId "opcional"
+        datetime lastNonSystemicMessageAt "opcional, regla anti spam"
+        datetime createdAt
+    }
+    QuoteMessage {
+        cuid id PK
+        cuid threadId FK "cascade"
+        string authorId "SIN FK declarada"
+        string authorRole "client, provider o system"
+        text body
+        boolean aiDrafted "default false, redactado por IA"
+        boolean approvedByUser "default true, aprobado por humano"
+        datetime createdAt
+    }
+    QuoteOffer {
+        cuid id PK
+        cuid requestId FK "cascade"
+        string providerId "SIN FK declarada"
+        int amount "opcional"
+        string currency "default NIO"
+        string priceLabel "opcional"
+        string deliveryTimeLabel "opcional"
+        text notes "opcional"
+        string status "default DRAFT"
+        datetime createdAt
+        datetime updatedAt
+    }
+    RequestEvent {
+        cuid id PK
+        cuid requestId FK "cascade"
+        enum eventType "RequestEventType, 19 valores"
+        cuid actorUserId FK "set null, nulo si es del sistema"
+        int completionCycleNo "default 0"
+        string idempotencyKey UK "sha256 unico, anti duplicado"
+        json metadataJson "opcional, payload de auditoria"
+        datetime occurredAt
+        datetime createdAt
+    }
+    ProviderPrivateFeedback {
+        cuid id PK
+        cuid requestId FK "unico, cascade, uno a uno"
+        cuid providerId FK "cascade"
+        cuid authorId FK "cascade"
+        text note
+        datetime createdAt
+        datetime updatedAt
+    }
+    ProviderPrivateFeedbackHistory {
+        cuid id PK
+        cuid feedbackId FK "cascade"
+        cuid authorId FK "cascade"
+        text note
+        datetime recordedAt
+    }
+</script>
+
+<script type="text/plain" id="src-f">
+erDiagram
+    QuoteThread ||--o{ Review : "habilita, cascade"
+    Provider ||--o{ Review : "es reseÃ±ado, restrict"
+    User ||--o{ Review : "reseÃ±a como cliente, restrict"
+    Review ||--o| ReviewAnalysis : "uno a uno analisis"
+    Review ||--o{ ReviewHistory : "versiona, cascade"
+    Provider ||--o{ ReputationEvent : "acumula, cascade"
+    QuoteThread |o--o{ ReputationEvent : "origina, set null"
+    RequestEvent |o--o{ ReputationEvent : "evento fuente, set null"
+    User |o--o{ ReputationEvent : "invalida, set null"
+    Provider ||--o{ TrustScoreSnapshot : "historiza, cascade"
+    Provider ||--o{ RiskReport : "es analizado, cascade"
+    User |o--o{ RiskReport : "revisa, escala o resuelve"
+    User |o--o{ ModerationAuditLog : "actua, set null"
+    Provider ||--o{ RiskSignalEvidence : "acumula seÃ±ales, cascade"
+    RiskReport |o--o{ RiskSignalEvidence : "respalda, set null"
+    RiskReport |o--o{ ModerationActionApproval : "motiva, set null"
+    User ||--o{ ModerationActionApproval : "solicita, cascade"
+    User |o--o{ ModerationActionApproval : "aprueba, set null"
+
+    Review {
+        cuid id PK
+        cuid providerId FK "restrict, reseÃ±ado"
+        cuid reviewerId FK "restrict, autor"
+        cuid requestId FK "cascade, solicitud que la respalda"
+        int qualityScore "eje 1 de 5"
+        int responseTimeScore "eje 2 de 5"
+        int fulfillmentScore "eje 3 de 5"
+        int communicationScore "eje 4 de 5"
+        int valueScore "eje 5 de 5"
+        float generalScore "DERIVADO de los 5 ejes"
+        text comment "opcional"
+        float sentiment "DERIVADO, duplica ReviewAnalysis"
+        float weight "default 1.0, es 0.5 si es unilateral"
+        datetime editedAt "opcional"
+        datetime createdAt "base de la ventana de 7 dias"
+    }
+    ReviewHistory {
+        cuid id PK
+        cuid reviewId FK "cascade"
+        int qualityScore
+        int responseTimeScore
+        int fulfillmentScore
+        int communicationScore
+        int valueScore
+        float generalScore
+        text comment "opcional"
+        datetime editedAt
+        string editedByUserId "SIN FK declarada"
+    }
+    ReviewAnalysis {
+        cuid id PK
+        cuid reviewId FK "unico, cascade"
+        float sentimentScore "opcional"
+        json qualitySignals "opcional"
+        json moderationFlags "opcional"
+        float generalScore "opcional"
+        string algorithmVersion "default v1-seeded"
+        datetime calculatedAt
+    }
+    ReputationEvent {
+        cuid id PK
+        cuid providerId FK "cascade"
+        cuid requestId FK "set null, unico junto a evidenceType"
+        enum evidenceType UK "EvidenceType"
+        float evidenceWeight "1.0 bilateral o 0.5 unilateral"
+        cuid sourceEventId FK "set null, RequestEvent origen"
+        string algorithmVersion "default trust-v2.0.0"
+        datetime invalidatedAt "opcional"
+        cuid invalidatedByAdminId FK "set null"
+        text invalidationReason "opcional"
+        datetime createdAt
+    }
+    TrustScoreSnapshot {
+        cuid id PK
+        cuid providerId FK "cascade"
+        float profileCompleteScore
+        float contactVerifiedScore
+        float requestsRespondedScore
+        float requestsCompletedScore
+        float avgReviewScore
+        float responseTimeScore
+        float accountAgeFactor
+        float suspiciousActivityPenalty
+        float finalScore
+        float publicScore "opcional"
+        string evidenceLevel "default INSUFFICIENT_EVIDENCE"
+        json breakdown "opcional, desglose auditable"
+        json caps "opcional, topes aplicados"
+        string algorithmVersion "default v1-rule-based"
+        datetime calculatedAt
+    }
+    RiskReport {
+        cuid id PK
+        cuid providerId FK "cascade"
+        float riskScore
+        int suspiciousCyclesCount "default 0"
+        float avgSearchTimeSeconds "opcional"
+        float avgRequestToCompletionMinutes "opcional"
+        float avgMessagesPerRequest "opcional"
+        float newAccountsPercentage "opcional"
+        float ratingConcentrationScore "opcional"
+        string status "default OPEN"
+        text reviewerNotes "opcional"
+        string recommendedAction "opcional"
+        datetime generatedAt
+        datetime reviewedAt "opcional"
+        cuid reviewedByUserId FK "set null"
+        datetime escalatedAt "opcional"
+        cuid escalatedByUserId FK "set null"
+        datetime resolvedAt "opcional"
+        cuid resolvedByUserId FK "set null"
+    }
+    ModerationAuditLog {
+        cuid id PK
+        cuid actorUserId FK "set null, nulo si actua el sistema"
+        string action "PROVIDER_SUSPENDED, REPORT_ESCALATED y mas"
+        string targetType "tipo de entidad afectada"
+        string targetId "id polimorfico, SIN FK por diseÃ±o"
+        text reason "obligatorio"
+        json metadata "opcional"
+        datetime createdAt
+    }
+    RiskSignalEvidence {
+        cuid id PK
+        cuid providerId FK "cascade"
+        cuid riskReportId FK "set null, reporte que la agrupa"
+        string signalKey "identificador determinista de la seÃ±al"
+        float observedValue "opcional, valor medido"
+        float threshold "opcional, umbral normativo"
+        float contribution "aporte al riesgo total"
+        datetime windowStart "inicio de la ventana observada"
+        datetime windowEnd "fin de la ventana observada"
+        json sourceEventIds "opcional, trazabilidad de eventos"
+        json sourceRecordIds "opcional, trazabilidad de registros"
+        string algorithmVersion "version que la genero"
+        datetime createdAt
+    }
+    ModerationActionApproval {
+        cuid id PK
+        string action "accion propuesta"
+        string targetType "tipo de entidad afectada"
+        string targetId "id polimorfico"
+        cuid riskReportId FK "set null, reporte que la motiva"
+        cuid requestedByUserId FK "cascade, quien la propone"
+        cuid approvedByUserId FK "set null, quien la confirma"
+        string status "default PENDING"
+        text reason "obligatorio"
+        datetime suspendedUntil "opcional"
+        datetime requestedAt
+        datetime approvedAt "opcional"
+        datetime expiresAt "caduca si nadie confirma"
+    }
+</script>
+
+<script type="module">
+import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+
+mermaid.initialize({
+  startOnLoad: false,
+  theme: 'base',
+  themeVariables: {
+    primaryColor: '#eef4ff',
+    primaryBorderColor: '#3b6ea8',
+    primaryTextColor: '#12263f',
+    lineColor: '#5b6b80',
+    fontSize: '13px',
+    fontFamily: 'Segoe UI, system-ui, sans-serif'
+  },
+  er: { entityPadding: 12, minEntityWidth: 130, useMaxWidth: false }
+});
+
+const META = {
+  global: 'Vista global: las 40 tablas con sus claves primarias y forÃ¡neas. Dos agregados raÃ­z (<b>User</b> y <b>Provider</b>) mÃ¡s un agregado transaccional (<b>QuoteThread</b>). <b>Review</b> es la Ãºnica entidad que depende de los tres a la vez, y esa triple dependencia es la que hace verificable cada reseÃ±a.',
+  a: 'MÃ³dulo A: identidad, sesiones y tokens. El rol vive en dos lugares por diseÃ±o: <b>User.role</b> es el rol primario y <b>RoleAssignment</b> permite roles mÃºltiples. El backend une ambos en <b>getUserSystemRoles</b>.',
+  b: 'MÃ³dulo B: datos de referencia. <b>Department a City</b> elimina la dependencia transitiva ciudad-departamento. <b>Category</b> es auto-referenciada para jerarquÃ­a de profundidad arbitraria. Las dos tablas puente resuelven M:N con clave compuesta, y <b>isPrimary</b> es un atributo que pertenece a la relaciÃ³n, no a las entidades.',
+  c: 'MÃ³dulo C: perfil del proveedor. <b>User 1 a N Provider</b> es intencional, una persona puede tener varios negocios. <b>ProviderMetrics</b> es un read model que separa <b>trustScore</b> interno de <b>publicTrustScore</b>: el score interno nunca sale de la base.',
+  d: 'MÃ³dulo D: catÃ¡logo. <b>EquipmentDetail</b> es especializaciÃ³n 1:1 opcional (class table inheritance) para atributos que solo aplican a equipo productivo, en lugar de dejar columnas nulas en la mayorÃ­a de las filas.',
+  e: 'MÃ³dulo E: el nÃºcleo transaccional con el modelo de 3 ejes (<b>workflow_phase</b>, <b>closure_outcome</b>, <b>moderation_state</b>). <b>RequestEvent</b> es un ledger append-only con idempotencia por sha256 en restricciÃ³n UNIQUE: un reintento de red no puede duplicar un evento.',
+  f: 'MÃ³dulo F: confianza y moderaciÃ³n. <b>Review</b> tiene UNIQUE (requestId, providerId, reviewerId): no existe reseÃ±a sin solicitud verificable. <b>ReputationEvent</b> tiene UNIQUE (requestId, evidenceType): la evidencia no se puede duplicar ni con el cron y la ruta HTTP corriendo a la vez.'
+};
+
+const stage = document.getElementById('stage');
+const meta  = document.getElementById('meta');
+const lvl   = document.getElementById('lvl');
+let current = 'global';
+let zoom = 1;
+
+function applyZoom(){
+  const svg = stage.querySelector('svg');
+  if (!svg) return;
+  svg.style.transformOrigin = '0 0';
+  svg.style.transform = `scale(${zoom})`;
+  lvl.textContent = Math.round(zoom * 100) + '%';
+}
+
+async function draw(key){
+  current = key;
+  meta.innerHTML = META[key] || '';
+  const code = document.getElementById('src-' + key).textContent.trim();
+  stage.textContent = 'Renderizandoâ€¦';
+  try {
+    const { svg } = await mermaid.render('g-' + key + '-' + Date.now(), code);
+    stage.innerHTML = svg;
+    zoom = 1;
+    applyZoom();
+  } catch (e) {
+    stage.innerHTML = '<div class="err">No se pudo renderizar el diagrama.\n\n' +
+      String(e && e.message ? e.message : e).replace(/[<>&]/g, c =>
+        ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c])) +
+      '\n\nSi el visor quedÃ³ en blanco, revisÃ¡ la conexiÃ³n: Mermaid se carga desde CDN.</div>';
+  }
+}
+
+document.querySelectorAll('.tab').forEach(b => {
+  b.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+    draw(b.dataset.d);
+  });
+});
+
+document.getElementById('in').onclick  = () => { zoom = Math.min(zoom + 0.15, 3);   applyZoom(); };
+document.getElementById('out').onclick = () => { zoom = Math.max(zoom - 0.15, 0.3); applyZoom(); };
+
+function currentSvgString(){
+  const svg = stage.querySelector('svg');
+  if (!svg) return null;
+  const clone = svg.cloneNode(true);
+  clone.style.transform = '';
+  clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+  return new XMLSerializer().serializeToString(clone);
+}
+
+document.getElementById('svg').onclick = () => {
+  const s = currentSvgString();
+  if (!s) return;
+  const url = URL.createObjectURL(new Blob([s], { type: 'image/svg+xml' }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'tradearc-er-' + current + '.svg';
+  a.click();
+  URL.revokeObjectURL(url);
+};
+
+document.getElementById('png').onclick = () => {
+  const svgEl = stage.querySelector('svg');
+  const s = currentSvgString();
+  if (!s || !svgEl) return;
+  const box = svgEl.getBoundingClientRect();
+  const scale = 2;
+  const w = Math.ceil((svgEl.viewBox.baseVal.width  || box.width  / zoom) * scale);
+  const h = Math.ceil((svgEl.viewBox.baseVal.height || box.height / zoom) * scale);
+  const img = document.createElement("img");
+  img.onload = () => {
+    const c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, w, h);
+    ctx.drawImage(img, 0, 0, w, h);
+    const a = document.createElement('a');
+    a.href = c.toDataURL('image/png');
+    a.download = 'tradearc-er-' + current + '.png';
+    a.click();
+  };
+  img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(s)));
+};
+
+draw('global');
+</script>
+</body>
+</html>

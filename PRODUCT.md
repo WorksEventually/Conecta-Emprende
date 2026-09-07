@@ -10,7 +10,7 @@ Personas emprendedoras, trabajadoras independientes, MIPYMES y proveedores de Ni
 
 ## Product Purpose
 
-Conecta Emprende AI convierte necesidades escritas en lenguaje cotidiano en conexiones útiles con proveedores locales. El producto debe hacer demostrable el recorrido completo desde buscar y comparar hasta solicitar una cotización, confirmar el trabajo, reseñar una experiencia verificada y construir confianza comercial dentro de la app.
+TradeArc convierte necesidades escritas en lenguaje cotidiano en conexiones útiles con proveedores locales. El producto debe hacer demostrable el recorrido completo desde buscar y comparar hasta solicitar una cotización, confirmar el trabajo, reseñar una experiencia verificada y construir confianza comercial dentro de la app.
 
 ## Brand Personality
 

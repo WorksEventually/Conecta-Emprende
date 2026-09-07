@@ -1,30 +1,31 @@
 import { prisma } from "../../lib/db";
-import type { ProviderRequest, VerifiedReview } from "../../lib/identity";
 
-export type ReviewValidationInput = {
-  request: ProviderRequest | null;
-  review: Pick<VerifiedReview, "reviewerUserId" | "reviewedProviderProfileId" | "requestId">;
-  existingReviews: Pick<VerifiedReview, "requestId" | "reviewerUserId">[];
-  reviewedProviderOwnerUserId: string;
-};
-
-// Legado: conservado para tests de validación sincrónica (test_profile_rating_admin.ts).
-export function validateVerifiedReview(input: ReviewValidationInput): { valid: true } | { valid: false; reason: string } {
-  const { request, review, existingReviews, reviewedProviderOwnerUserId } = input;
-  if (!request) return { valid: false, reason: "REQUEST_NOT_FOUND" };
-  if (request.id !== review.requestId) return { valid: false, reason: "REQUEST_MISMATCH" };
-  if (request.status !== "COMPLETED") return { valid: false, reason: "REQUEST_NOT_COMPLETED" };
-  if (!request.confirmedByRequesterAt || !request.confirmedByProviderAt) return { valid: false, reason: "BILATERAL_CONFIRMATION_REQUIRED" };
-  if (request.targetProviderProfileId !== review.reviewedProviderProfileId) return { valid: false, reason: "WRONG_PROVIDER_PROFILE" };
-  if (request.requesterUserId !== review.reviewerUserId) return { valid: false, reason: "REVIEWER_NOT_PARTICIPANT" };
-  if (review.reviewerUserId === reviewedProviderOwnerUserId) return { valid: false, reason: "SELF_REVIEW_NOT_ALLOWED" };
-  if (existingReviews.some((item) => item.requestId === review.requestId && item.reviewerUserId === review.reviewerUserId)) return { valid: false, reason: "DUPLICATE_REVIEW" };
-  return { valid: true };
-}
 
 export type ReviewEligibilityResult =
-  | { eligible: true; weight: number }
-  | { eligible: false; reason: string };
+  | { eligible: true; weight: number; route: "BILATERAL" | "UNILATERAL_QUALIFIED"; reason: null; existingReview: null; editableUntil: null }
+  | { eligible: false; reason: string; route: null; weight: null; existingReview: { id: string; createdAt: Date } | null; editableUntil: Date | null };
+
+const UNILATERAL_OUTCOMES = new Set([
+  "REQUESTER_CONFIRMED_PROVIDER_NO_RESPONSE",
+  "CANCELLED_BY_PROVIDER_AFTER_ENGAGEMENT",
+]);
+
+export const REVIEW_EDIT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+
+export function isReviewEditable(createdAt: Date, now = Date.now()): boolean {
+  return now - createdAt.getTime() <= REVIEW_EDIT_WINDOW_MS;
+}
+
+function ineligible(reason: string, existingReview: { id: string; createdAt: Date } | null = null): ReviewEligibilityResult {
+  return {
+    eligible: false,
+    reason,
+    route: null,
+    weight: null,
+    existingReview,
+    editableUntil: existingReview ? new Date(existingReview.createdAt.getTime() + 7 * 24 * 60 * 60 * 1000) : null,
+  };
+}
 
 export async function checkReviewEligibility(
   threadId: string,
@@ -36,19 +37,19 @@ export async function checkReviewEligibility(
   });
 
   if (!thread) {
-    return { eligible: false, reason: "THREAD_NOT_FOUND" };
+    return ineligible("THREAD_NOT_FOUND");
   }
 
   if (thread.senderId !== reviewerUserId) {
-    return { eligible: false, reason: "ONLY_REQUESTER_CAN_REVIEW" };
+    return ineligible("ONLY_REQUESTER_CAN_REVIEW");
   }
 
   if (thread.provider.userId === reviewerUserId) {
-    return { eligible: false, reason: "SELF_REVIEW_NOT_ALLOWED" };
+    return ineligible("SELF_REVIEW_NOT_ALLOWED");
   }
 
   if (thread.workflow_phase !== "CLOSED") {
-    return { eligible: false, reason: "THREAD_NOT_CLOSED" };
+    return ineligible("THREAD_NOT_CLOSED");
   }
 
   const existingReview = await prisma.review.findUnique({
@@ -62,20 +63,45 @@ export async function checkReviewEligibility(
   });
 
   if (existingReview) {
-    return { eligible: false, reason: "ALREADY_REVIEWED" };
+    return ineligible("ALREADY_REVIEWED", existingReview);
   }
 
-  switch (thread.closure_outcome) {
-    case "BILATERAL":
-      return { eligible: true, weight: 1.0 };
-
-    case "REQUESTER_CONFIRMED_PROVIDER_NO_RESPONSE":
-      return { eligible: true, weight: 0.5 };
-
-    case "CANCELLED_BY_PROVIDER_AFTER_ENGAGEMENT":
-      return { eligible: true, weight: 0.5 };
-
-    default:
-      return { eligible: false, reason: "OUTCOME_NOT_REVIEWABLE" };
+  if (thread.closure_outcome === "BILATERAL") {
+    return { eligible: true, weight: 1.0, route: "BILATERAL", reason: null, existingReview: null, editableUntil: null };
   }
+
+  if (!UNILATERAL_OUTCOMES.has(thread.closure_outcome || "")) {
+    return ineligible("OUTCOME_NOT_REVIEWABLE");
+  }
+
+  const adminConfirmation = await prisma.moderationAuditLog.findFirst({
+    where: { action: "COMMERCIAL_INTERACTION_CONFIRMED", targetType: "QUOTE_THREAD", targetId: threadId },
+    select: { id: true },
+  });
+  const acceptedQuotation = thread.acceptedQuotation !== null;
+  const closureEvent = await prisma.requestEvent.findFirst({
+    where: {
+      requestId: threadId,
+      eventType: { in: ["COMPLETION_CONFIRMED", "COMPLETION_TIMEOUT", "CANCELLED_BY_PROVIDER"] },
+    },
+    orderBy: { occurredAt: "desc" },
+    select: { occurredAt: true },
+  });
+  // A 24h window must be measured against the recorded closure event. The
+  // message/creation fallbacks are intentionally not valid closure evidence.
+  const closedAt = thread.completedAt ?? closureEvent?.occurredAt;
+  if (!closedAt) {
+    return ineligible("CLOSURE_TIME_NOT_RECORDED");
+  }
+  const activeFor24Hours = closedAt.getTime() - thread.createdAt.getTime() >= 24 * 60 * 60 * 1000;
+  const providerSentNonSystemicMessage = await prisma.quoteMessage.findFirst({
+    where: { threadId, authorId: thread.provider.userId, authorRole: { not: "system" } },
+    select: { id: true },
+  });
+
+  if (!acceptedQuotation && !(providerSentNonSystemicMessage && activeFor24Hours) && !adminConfirmation) {
+    return ineligible("NO_ENGAGEMENT_BEFORE_CANCELLATION");
+  }
+
+  return { eligible: true, weight: 0.5, route: "UNILATERAL_QUALIFIED", reason: null, existingReview: null, editableUntil: null };
 }

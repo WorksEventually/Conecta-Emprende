@@ -12,6 +12,7 @@ RUN npm ci --ignore-scripts
 FROM deps AS builder
 WORKDIR /app
 COPY . .
+RUN npx prisma generate
 RUN npm run build
 
 # ──────────────────────────────────────────────────────────
@@ -34,4 +35,4 @@ USER nodejs
 
 EXPOSE 3000
 
-CMD ["node", "-e", "process.env.NODE_ENV='production';require('./dist/server.cjs')"]
+CMD ["node", "dist/server.cjs"]

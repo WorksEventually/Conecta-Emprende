@@ -44,7 +44,7 @@ export function MyProfilePage() {
   const provider = currentProvider?.provider;
   const photos = currentProvider?.photos || [];
   const medals = currentProvider?.medals || [];
-  const trustScore = currentProvider?.provider?.trustScore?.finalScore ?? 0;
+  const trustScore = currentProvider?.provider?.trustScore?.publicScore ?? null;
   const portfolioImages = photos.map((p: any) => p.imageUrl).filter(Boolean);
 
   if (!provider) {
@@ -78,8 +78,8 @@ export function MyProfilePage() {
       <section className="account-summary">
         <div className="profile-monogram">{initials}</div>
         <div>
-          <h2>{user.name || "Usuario"}</h2>
-          <p>{user.email}</p>
+          <h2 className="text-truncate" title={user.name || "Usuario"}>{user.name || "Usuario"}</h2>
+          <p className="text-truncate" title={user.email}>{user.email}</p>
           <div className="badges">
             <span className="badge"><Smartphone /> Teléfono verificado</span>
             <span className="badge"><UserRound /> {getRoleLabel([user.role, ...(user.roleLabels ?? [])])}</span>
@@ -96,8 +96,8 @@ export function MyProfilePage() {
             />
             <div>
               <span className="eyebrow">Vista previa pública</span>
-              <h2>{provider.displayName}</h2>
-              <p>{provider.aboutDescription || provider.shortDescription}</p>
+              <h2 className="text-truncate" title={provider.displayName}>{provider.displayName}</h2>
+              <p className="text-clamp-3">{provider.aboutDescription || provider.shortDescription}</p>
               <div className="badges">
                 <TrustBadge score={trustScore} />
                 <VerificationBadge level={(provider.verificationLevel as any) || "UNVERIFIED"} />
@@ -246,6 +246,7 @@ export function EditProfilePage() {
           <input
             value={form.displayName}
             onChange={e => setForm({ ...form, displayName: e.target.value })}
+            maxLength={80}
           />
           {errors.displayName && <span className="field-error">{errors.displayName}</span>}
         </label>
@@ -279,6 +280,7 @@ export function EditProfilePage() {
             rows={5}
             value={form.description}
             onChange={e => setForm({ ...form, description: e.target.value })}
+            maxLength={2000}
           />
           <span className={form.description.length < 40 ? "field-hint warning" : "field-hint"}>
             {form.description.length}/40 mínimo
@@ -317,6 +319,7 @@ export function EditProfilePage() {
             rows={3}
             value={form.portfolioText}
             onChange={e => setForm({ ...form, portfolioText: e.target.value })}
+            maxLength={2000}
           />
           <span className="field-hint">Una URL por línea. La carga de archivos no forma parte del MVP.</span>
         </label>
