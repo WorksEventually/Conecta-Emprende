@@ -2,6 +2,7 @@
 # Stage 1: Dependencies
 # ──────────────────────────────────────────────────────────
 FROM node:20-alpine AS deps
+RUN apk add --no-cache openssl libc6-compat
 WORKDIR /app
 COPY package.json package-lock.json* ./
 RUN npm ci --ignore-scripts
@@ -19,6 +20,7 @@ RUN npm run build
 # Stage 3: Runtime
 # ──────────────────────────────────────────────────────────
 FROM node:20-alpine AS runtime
+RUN apk add --no-cache openssl libc6-compat
 WORKDIR /app
 
 ENV NODE_ENV=production
