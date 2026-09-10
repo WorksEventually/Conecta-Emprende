@@ -74,12 +74,12 @@ export default function SearchPage() {
           (!cityTarget || provider.city === cityTarget) &&
           (!categoryTarget || norm(provider.category).includes(norm(categoryTarget))) &&
           (!price || provider.priceRange === price) &&
-           (provider.trustScore ?? -1) >= trust;
+           (provider.trustScore ?? 0) >= trust;
 
         return { ...provider, match };
       })
       .filter((provider: any) => provider.match)
-       .sort((a: any, b: any) => (b.trustScore ?? -1) - (a.trustScore ?? -1));
+       .sort((a: any, b: any) => (b.trustScore ?? 0) - (a.trustScore ?? 0));
   }, [providers, city, category, price, trust, aiIntent]);
 
   const mapProviders = useMemo<SearchMapProvider[]>(() => {
